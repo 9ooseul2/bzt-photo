@@ -23,3 +23,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- B_photoproject 추가 ---
+# 환경 변수 (API 키 등, 절대 공유 금지)
+.env
+.env.*
+!.env.example
+
+# Blender 자동 백업 / 임시 파일
+*.blend1
+*.blend2
+*.blend@
+*.blend~
+
+# 맥 / 윈도우 시스템 파일
+Thumbs.db
+._*
