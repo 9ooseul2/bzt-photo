@@ -17,6 +17,61 @@ npm run dev
 npm run build
 ```
 
+## 함께 작업하기
+
+- 저장소: https://github.com/9ooseul2/bzt-photo
+- 테스트 사이트: https://9ooseul2.github.io/bzt-photo/
+
+### main 브랜치는 보호되어 있습니다
+
+`main`은 실제 사이트에 자동 배포되는 버전이라, 직접 push하면 GitHub가 거절하도록 설정되어 있습니다.
+모든 수정은 **브랜치에서 작업 → PR 올리기 → 자동 빌드 검사(`build`) 통과 → 머지** 순서로 들어가며,
+머지되면 1~2분 뒤 사이트에 자동 반영됩니다.
+
+### 작업 순서
+
+1. 최신 main 받기
+
+   ```bash
+   git switch main
+   git pull
+   ```
+
+2. 작업용 브랜치 만들기
+
+   ```bash
+   git switch -c feat/작업이름
+   ```
+
+3. 작업 후 저장하고 올리기
+
+   ```bash
+   git add .
+   git commit -m "무엇을 바꿨는지"
+   git push -u origin feat/작업이름
+   ```
+
+4. GitHub에서 **Compare & pull request** → 설명에 "무엇을, 왜" 한두 줄 → **Create pull request**
+5. 검사(`build`)가 초록색이 되면 서로 확인한 뒤 **Merge pull request**
+6. 머지한 브랜치는 **Delete branch**로 정리하고, 내 컴퓨터는 1번부터 다시 시작
+
+### 브랜치 이름 규칙
+
+| 앞머리 | 용도 | 예시 |
+|---|---|---|
+| `feat/` | 새 기능 | `feat/guestbook-supabase` |
+| `fix/` | 버그·화면 수정 | `fix/photo-not-loading` |
+| `art/` | 3D 모델·사진 에셋 | `art/accessory-beanie` |
+| `docs/` | 문서 수정 | `docs/collab-guide` |
+
+영어 소문자와 하이픈(`-`)만 사용합니다.
+
+### 참고
+
+- 3D 파일(`.glb`, `.blend`)은 두 사람이 동시에 수정하면 합칠 수 없으므로, 작업 전에 미리 공유합니다.
+- 작품 사진은 긴 변 2048~2560px 정도로 줄여서 올립니다 (로딩 속도).
+- `public` 폴더 파일을 코드에서 불러올 때는 아래 [Deploy & asset paths](#deploy--asset-paths)를 참고합니다.
+
 ## Structure
 
 - `src/core`: 앱 시작과 공통 조정 코드
