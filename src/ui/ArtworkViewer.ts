@@ -1,4 +1,5 @@
 import type { ArtworkConfig } from '../scenes/exhibition/artworks/types.ts'
+import { publicAsset } from '../config/publicAsset.ts'
 
 /** DOM-only detail viewer, intentionally separate from Three.js interaction. */
 export class ArtworkViewer {
@@ -80,7 +81,7 @@ export class ArtworkViewer {
     this.image.hidden = false
     this.message.hidden = true
     this.resetView()
-    this.image.src = artwork.imageUrl
+    this.image.src = publicAsset(artwork.imageUrl)
     window.requestAnimationFrame(() => this.closeButton.focus())
   }
 

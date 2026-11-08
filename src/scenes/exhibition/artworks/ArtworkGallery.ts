@@ -13,6 +13,7 @@ import {
   Vector3,
 } from 'three'
 import type { GridPathfinder } from '../../../characters/pathfinding/GridPathfinder.ts'
+import { publicAsset } from '../../../config/publicAsset.ts'
 import { ExhibitionWall } from '../ExhibitionWall.ts'
 import {
   DEFAULT_CENTER_HEIGHT,
@@ -162,7 +163,7 @@ export class ArtworkGallery {
     this.addDebugSpots(artwork)
 
     this.loader.load(
-      config.imageUrl,
+      publicAsset(config.imageUrl),
       (texture) => {
         if (this.disposed) {
           texture.dispose()

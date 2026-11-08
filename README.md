@@ -43,3 +43,10 @@ npm run build
 - 마우스 왼쪽 또는 오른쪽 버튼을 드래그하면 3인칭 카메라가 회전합니다. 짧은 왼쪽 클릭은 드래그로 처리되지 않습니다.
 - 마우스 휠로 3m부터 12m 범위에서 부드럽게 확대·축소할 수 있으며, 페이지는 스크롤되지 않습니다.
 - 카메라 구도값은 `src/scenes/cameras/visitorCameraConfig.ts`에서 조정합니다.
+
+## Deploy & asset paths
+
+- `main` 브랜치에 합쳐지면 GitHub Actions(`.github/workflows/deploy.yml`)가 빌드 후 GitHub Pages에 자동 배포합니다.
+- `vite.config.ts`의 `base: './'` 덕분에 `github.io/bzt-photo/` 주소와 정식 도메인 어디서나 같은 결과물이 동작합니다.
+- `public` 폴더의 파일(작품 사진, 3D 모델 등)을 코드에서 불러올 때는 `src/config/publicAsset.ts`의
+  `publicAsset('/images/...')`를 거쳐 주세요. 주소를 직접 넣으면 배포 주소에서 파일을 못 찾을 수 있습니다.
