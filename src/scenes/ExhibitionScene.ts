@@ -324,6 +324,8 @@ export class ExhibitionScene {
       keyLight.castShadow = keyLightConfig.castShadow
       if (keyLight.castShadow) {
         keyLight.shadow.mapSize.set(2048, 2048)
+        // 매끈한 곡면(캐릭터)에 생기는 물결 무늬 그림자를 막는 보정값
+        keyLight.shadow.normalBias = 0.04
         keyLight.shadow.camera.left = -22
         keyLight.shadow.camera.right = 22
         keyLight.shadow.camera.top = 18
