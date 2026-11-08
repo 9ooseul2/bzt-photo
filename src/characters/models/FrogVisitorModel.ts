@@ -2,22 +2,46 @@ import {
   BufferGeometry,
   CatmullRomCurve3,
   Group,
+  Material,
   Mesh,
   MeshStandardMaterial,
-  Material,
+  Object3D,
   SphereGeometry,
   TubeGeometry,
   Vector3,
 } from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { publicAsset } from '../../config/publicAsset.ts'
 import type { CharacterAnimationState, CharacterVisual } from '../CharacterVisual.ts'
 import type { VisitorCharacterConfig } from '../VisitorCharacter.ts'
 import { createAccessoryModel } from '../customization/FrogAccessories.ts'
 import { FROG_COLOR_VALUES, normalizeCustomization, type AccessorySlot, type FrogCustomization } from '../customization/types.ts'
 
 /**
+ * 캐릭터 크기. 숫자를 줄이면 작아진다 (0.602 = 처음 크기).
+ * 이름표, 감정 표시 높이와 카메라가 바라보는 높이는 자동으로 따라간다.
+ */
+const MODEL_SCALE = 0.54
+const ORIGINAL_MODEL_SCALE = 0.602
+/** kkebook.glb 머리 꼭대기 높이 (모델 기준 단위) */
+const KKEBOOK_HEAD_TOP = 2.13
+
+/**
+ * 걷기 동작 크기. 숫자를 키우면 더 크게 움직인다.
+ * legSwing: 다리 앞뒤 흔들림(라디안), armSwing: 팔 흔들림(다리 대비 비율),
+ * bob: 몸 위아래 들썩임, waddle: 좌우로 뒤뚱거림(라디안)
+ */
+export const WALK_ANIMATION = {
+  legSwing: 0.6,
+  armSwing: 0.9,
+  bob: 0.05,
+  waddle: 0.07,
+}
+
+/**
  * Dimensions that belong to the frog presentation, not to the path controller.
- * A future GLB visual should export a compatible CharacterVisual and can reuse
- * the collision and camera settings below.
+ * kkebook.glb is authored in the same local units as the original prototype frog,
+ * so the same modelScale applies to both.
  */
 export const FROG_VISITOR_CONFIG: VisitorCharacterConfig & {
   emoteHeight: number
@@ -27,15 +51,20 @@ export const FROG_VISITOR_CONFIG: VisitorCharacterConfig & {
 } = {
   // The original presentation scale (0.86) is reduced to 70% for this view.
   collisionRadius: 0.294,
-  cameraTargetHeight: 1.25,
-  emoteHeight: 1.93,
-  // Compensates for the rounded feet's -0.01 local-unit resting extent.
-  groundOffset: 0.00602,
-  modelScale: 0.602,
-  nicknameHeight: 1.62,
+  // Keeps the same camera framing relative to the character when its size changes.
+  cameraTargetHeight: 1.25 * (MODEL_SCALE / ORIGINAL_MODEL_SCALE),
+  // Labels keep a fixed gap above kkebook's head top.
+  emoteHeight: KKEBOOK_HEAD_TOP * MODEL_SCALE + 0.58,
+  // kkebook's feet rest exactly on y = 0 (the prototype frog used 0.00602).
+  groundOffset: 0,
+  modelScale: MODEL_SCALE,
+  nicknameHeight: KKEBOOK_HEAD_TOP * MODEL_SCALE + 0.27,
 }
 
-/** Anchor coordinates remain explicit so prototype meshes can later be replaced by GLB attachments. */
+/** 꾸미기 화면 미리보기는 캐릭터 크기를 바꿔도 처음 크기로 보이게 하는 배율 */
+export const FROG_PREVIEW_SCALE = ORIGINAL_MODEL_SCALE / MODEL_SCALE
+
+/** Anchor coordinates for the prototype (fallback) frog built from basic geometry. */
 export const FROG_ACCESSORY_ANCHOR_CONFIG = {
   body: [0, 0.92, 0] as const,
   face: [0, 1.62, 0.5] as const,
@@ -43,6 +72,25 @@ export const FROG_ACCESSORY_ANCHOR_CONFIG = {
   head: [0, 2.14, 0.02] as const,
   neck: [0, 1.15, 0] as const,
 }
+
+type AnchorKey = AccessorySlot | 'body'
+type AnchorFit = { position?: readonly [number, number, number]; scale?: number }
+
+/**
+ * kkebook.glb 앵커에 기존(코드로 그린) 악세서리를 붙일 때의 보정값.
+ * kkebook은 머리와 몸이 더 넓어서 일부 슬롯을 키우거나 옮긴다. 화면을 보며 조정하는 값이다.
+ * position은 모델 기준 좌표로 앵커 위치를 덮어쓰고, scale은 그 슬롯의 악세서리 전체 크기 배율이다.
+ */
+export const KKEBOOK_ACCESSORY_FIT: Readonly<Record<AnchorKey, AnchorFit>> = {
+  head: {},
+  face: { scale: 1.25 },
+  // 머리 아래 챙 바로 밑, 몸통 둘레에 맞춘 목 위치
+  neck: { position: [0, 0.8, 0], scale: 1.22 },
+  body: { scale: 1.15 },
+  hand: {},
+}
+
+const KKEBOOK_URL = publicAsset('models/characters/kkebook.glb')
 
 const BODY_COLOR = '#b9e59a'
 const BELLY_COLOR = '#fff7d8'
@@ -53,6 +101,104 @@ export interface FrogVisitorVisual extends CharacterVisual {
   applyCustomization(customization: FrogCustomization): void
   dispose(): void
   getCustomization(): FrogCustomization
+}
+
+/** Everything the animation and customization code needs, regardless of where the mesh came from. */
+interface FrogRig {
+  root: Object3D
+  groundOffset: number
+  bodyMaterial: MeshStandardMaterial
+  leftHip: Object3D
+  rightHip: Object3D
+  leftShoulder: Object3D
+  rightShoulder: Object3D
+  bobParts: { object: Object3D; baseY: number }[]
+  anchors: Record<AnchorKey, Object3D>
+}
+
+let kkebookTemplate: Promise<Object3D | null> | undefined
+
+/** Loads kkebook.glb once and shares it; every frog instance clones it. */
+export function preloadKkebookModel(): Promise<Object3D | null> {
+  kkebookTemplate ??= new GLTFLoader()
+    .loadAsync(KKEBOOK_URL)
+    .then((gltf) => {
+      // Geometry stays shared between clones, so instances must never dispose it.
+      gltf.scene.traverse((object) => {
+        if (object instanceof Mesh) object.userData.sharedGeometry = true
+      })
+      return gltf.scene
+    })
+    .catch((error: unknown) => {
+      console.warn('[kkebook] 캐릭터 파일을 불러오지 못해 기본 개구리로 표시합니다.', error)
+      return null
+    })
+  return kkebookTemplate
+}
+
+// Start downloading as soon as the app loads so the entry/customizer screen is ready.
+void preloadKkebookModel()
+
+function createKkebookRig(template: Object3D): FrogRig | null {
+  const root = template.clone(true)
+  const find = (name: string): Object3D | undefined => root.getObjectByName(`kkebook-${name}`)
+
+  // Each instance gets its own materials so body colour can differ per visitor.
+  const materialCopies = new Map<Material, MeshStandardMaterial>()
+  root.traverse((object) => {
+    if (!(object instanceof Mesh)) return
+    object.castShadow = true
+    object.receiveShadow = true
+    const source = object.material as MeshStandardMaterial
+    let copy = materialCopies.get(source)
+    if (!copy) {
+      copy = source.clone()
+      materialCopies.set(source, copy)
+    }
+    object.material = copy
+  })
+  const bodyMaterial = [...materialCopies.values()].find((material) => material.name === 'Kkebook_Body')
+
+  const body = find('body')
+  const leftHip = find('left-leg-pivot')
+  const rightHip = find('right-leg-pivot')
+  const leftShoulder = find('left-arm-pivot')
+  const rightShoulder = find('right-arm-pivot')
+  const head = find('head-anchor')
+  const face = find('face-anchor')
+  const neck = find('neck-anchor')
+  const bodyAnchor = find('body-anchor')
+  const hand = find('hand-anchor')
+  if (!bodyMaterial || !body || !leftHip || !rightHip || !leftShoulder || !rightShoulder
+    || !head || !face || !neck || !bodyAnchor || !hand) {
+    console.warn('[kkebook] 파일 안에 필요한 부품 이름이 없어 기본 개구리로 표시합니다.')
+    return null
+  }
+
+  const anchors: Record<AnchorKey, Object3D> = { head, face, neck, body: bodyAnchor, hand }
+  for (const key of Object.keys(anchors) as AnchorKey[]) {
+    const fit = KKEBOOK_ACCESSORY_FIT[key]
+    if (fit.position) anchors[key].position.set(...fit.position)
+    anchors[key].scale.setScalar(fit.scale ?? 1)
+  }
+
+  // Everything above the legs bobs together while the feet stay on the floor.
+  const partsContainer = leftHip.parent ?? root
+  const bobParts = partsContainer.children
+    .filter((child) => child !== leftHip && child !== rightHip)
+    .map((object) => ({ object, baseY: object.position.y }))
+
+  return {
+    root,
+    groundOffset: 0,
+    bodyMaterial,
+    leftHip,
+    rightHip,
+    leftShoulder,
+    rightShoulder,
+    bobParts,
+    anchors,
+  }
 }
 
 function createRoundedPart(
@@ -68,14 +214,12 @@ function createRoundedPart(
 }
 
 /**
- * Builds the default toy-like frog from basic Three.js geometry. The model's
- * local forward direction is +Z, matching VisitorCharacter's facing logic.
+ * The original toy-like frog from basic Three.js geometry. Kept as a fallback
+ * when kkebook.glb cannot be loaded. Local forward direction is +Z.
  */
-export function createFrogVisitorModel(initialCustomization?: FrogCustomization): FrogVisitorVisual {
-  const model = new Group()
-  model.name = 'frog-visitor-model'
-  model.position.y = FROG_VISITOR_CONFIG.groundOffset
-  model.scale.setScalar(FROG_VISITOR_CONFIG.modelScale)
+function createProceduralRig(): FrogRig {
+  const root = new Group()
+  root.name = 'frog-procedural-rig'
 
   const bodyMaterial = new MeshStandardMaterial({ color: BODY_COLOR, roughness: 0.78, metalness: 0 })
   const bellyMaterial = new MeshStandardMaterial({ color: BELLY_COLOR, roughness: 0.82, metalness: 0 })
@@ -83,59 +227,27 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
   const faceMaterial = new MeshStandardMaterial({ color: FACE_COLOR, roughness: 0.72, metalness: 0 })
   const sphere = new SphereGeometry(1, 24, 18)
 
-  const body = createRoundedPart(
-    sphere,
-    bodyMaterial,
-    new Vector3(0, 0.86, 0),
-    new Vector3(0.57, 0.62, 0.43),
-  )
+  const body = createRoundedPart(sphere, bodyMaterial, new Vector3(0, 0.86, 0), new Vector3(0.57, 0.62, 0.43))
   body.name = 'frog-body'
-
-  const belly = createRoundedPart(
-    sphere,
-    bellyMaterial,
-    new Vector3(0, 0.82, 0.405),
-    new Vector3(0.34, 0.39, 0.045),
-  )
+  const belly = createRoundedPart(sphere, bellyMaterial, new Vector3(0, 0.82, 0.405), new Vector3(0.34, 0.39, 0.045))
   belly.name = 'frog-belly'
-
-  const head = createRoundedPart(
-    sphere,
-    bodyMaterial,
-    new Vector3(0, 1.57, 0.015),
-    new Vector3(0.79, 0.59, 0.48),
-  )
+  const head = createRoundedPart(sphere, bodyMaterial, new Vector3(0, 1.57, 0.015), new Vector3(0.79, 0.59, 0.48))
   head.name = 'frog-head'
 
-  const leftEyeBump = createRoundedPart(
-    sphere,
-    bodyMaterial,
-    new Vector3(-0.38, 1.98, 0.005),
-    new Vector3(0.31, 0.31, 0.32),
-  )
+  const leftEyeBump = createRoundedPart(sphere, bodyMaterial, new Vector3(-0.38, 1.98, 0.005), new Vector3(0.31, 0.31, 0.32))
   const rightEyeBump = leftEyeBump.clone()
   rightEyeBump.position.x *= -1
   leftEyeBump.name = 'frog-left-eye-bump'
   rightEyeBump.name = 'frog-right-eye-bump'
 
   const eyeGeometry = new SphereGeometry(1, 16, 12)
-  const leftEye = createRoundedPart(
-    eyeGeometry,
-    faceMaterial,
-    new Vector3(-0.32, 1.72, 0.456),
-    new Vector3(0.073, 0.083, 0.047),
-  )
+  const leftEye = createRoundedPart(eyeGeometry, faceMaterial, new Vector3(-0.32, 1.72, 0.456), new Vector3(0.073, 0.083, 0.047))
   const rightEye = leftEye.clone()
   rightEye.position.x *= -1
   leftEye.name = 'frog-left-eye'
   rightEye.name = 'frog-right-eye'
 
-  const leftCheek = createRoundedPart(
-    sphere,
-    blushMaterial,
-    new Vector3(-0.52, 1.45, 0.448),
-    new Vector3(0.17, 0.13, 0.035),
-  )
+  const leftCheek = createRoundedPart(sphere, blushMaterial, new Vector3(-0.52, 1.45, 0.448), new Vector3(0.17, 0.13, 0.035))
   const rightCheek = leftCheek.clone()
   rightCheek.position.x *= -1
   leftCheek.name = 'frog-left-cheek'
@@ -156,130 +268,134 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
   const leftHip = new Group()
   leftHip.name = 'frog-left-leg-pivot'
   leftHip.position.set(-0.25, 0.42, 0.035)
-  const leftLeg = createRoundedPart(
-    sphere,
-    bodyMaterial,
-    new Vector3(0, -0.12, 0.08),
-    new Vector3(0.24, 0.31, 0.28),
-  )
+  const leftLeg = createRoundedPart(sphere, bodyMaterial, new Vector3(0, -0.12, 0.08), new Vector3(0.24, 0.31, 0.28))
   leftHip.add(leftLeg)
-
   const rightHip = new Group()
   rightHip.name = 'frog-right-leg-pivot'
   rightHip.position.set(0.25, 0.42, 0.035)
-  const rightLeg = leftLeg.clone()
-  rightHip.add(rightLeg)
+  rightHip.add(leftLeg.clone())
 
   const leftShoulder = new Group()
   leftShoulder.name = 'frog-left-arm-pivot'
   leftShoulder.position.set(-0.55, 1.02, 0.025)
-  const leftArm = createRoundedPart(
-    sphere,
-    bodyMaterial,
-    new Vector3(0, -0.12, 0.045),
-    new Vector3(0.18, 0.28, 0.2),
-  )
+  const leftArm = createRoundedPart(sphere, bodyMaterial, new Vector3(0, -0.12, 0.045), new Vector3(0.18, 0.28, 0.2))
   leftShoulder.add(leftArm)
-
   const rightShoulder = new Group()
   rightShoulder.name = 'frog-right-arm-pivot'
   rightShoulder.position.set(0.55, 1.02, 0.025)
-  const rightArm = leftArm.clone()
-  rightShoulder.add(rightArm)
+  rightShoulder.add(leftArm.clone())
 
-  const headAnchor = new Group()
-  headAnchor.name = 'frog-head-anchor'
-  headAnchor.position.set(...FROG_ACCESSORY_ANCHOR_CONFIG.head)
-  const faceAnchor = new Group()
-  faceAnchor.name = 'frog-face-anchor'
-  faceAnchor.position.set(...FROG_ACCESSORY_ANCHOR_CONFIG.face)
-  const neckAnchor = new Group()
-  neckAnchor.name = 'frog-neck-anchor'
+  const makeAnchor = (name: string, position: readonly [number, number, number]): Group => {
+    const anchor = new Group()
+    anchor.name = name
+    anchor.position.set(...position)
+    return anchor
+  }
+  const headAnchor = makeAnchor('frog-head-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.head)
+  const faceAnchor = makeAnchor('frog-face-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.face)
   // Neck accessories use a centred anchor so their bands are visible from front and back.
-  neckAnchor.position.set(...FROG_ACCESSORY_ANCHOR_CONFIG.neck)
-  const bodyAnchor = new Group()
-  bodyAnchor.name = 'frog-body-anchor'
-  bodyAnchor.position.set(...FROG_ACCESSORY_ANCHOR_CONFIG.body)
-  const handAnchor = new Group()
-  handAnchor.name = 'frog-hand-anchor'
-  handAnchor.position.set(...FROG_ACCESSORY_ANCHOR_CONFIG.hand)
+  const neckAnchor = makeAnchor('frog-neck-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.neck)
+  const bodyAnchor = makeAnchor('frog-body-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.body)
+  const handAnchor = makeAnchor('frog-hand-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.hand)
   rightShoulder.add(handAnchor)
 
-  model.add(
-    body,
-    belly,
-    head,
-    leftEyeBump,
-    rightEyeBump,
-    leftEye,
-    rightEye,
-    leftCheek,
-    rightCheek,
-    mouth,
-    leftHip,
-    rightHip,
-    leftShoulder,
-    rightShoulder,
-    headAnchor,
-    faceAnchor,
-    neckAnchor,
-    bodyAnchor,
+  root.add(
+    body, belly, head, leftEyeBump, rightEyeBump, leftEye, rightEye, leftCheek, rightCheek, mouth,
+    leftHip, rightHip, leftShoulder, rightShoulder, headAnchor, faceAnchor, neckAnchor, bodyAnchor,
   )
-  model.traverse((object) => {
+  root.traverse((object) => {
     if (object instanceof Mesh) {
       object.castShadow = true
       object.receiveShadow = true
     }
   })
 
+  return {
+    root,
+    groundOffset: 0.00602,
+    bodyMaterial,
+    leftHip,
+    rightHip,
+    leftShoulder,
+    rightShoulder,
+    bobParts: [{ object: body, baseY: 0.86 }, { object: belly, baseY: 0.82 }],
+    anchors: { head: headAnchor, face: faceAnchor, neck: neckAnchor, body: bodyAnchor, hand: handAnchor },
+  }
+}
+
+/**
+ * Builds the visitor frog. The returned root is available immediately; the kkebook
+ * mesh appears as soon as kkebook.glb has loaded (usually before the first frame,
+ * because the file is preloaded). If loading fails, the prototype frog is shown.
+ */
+export function createFrogVisitorModel(initialCustomization?: FrogCustomization): FrogVisitorVisual {
+  const model = new Group()
+  model.name = 'frog-visitor-model'
+  model.scale.setScalar(FROG_VISITOR_CONFIG.modelScale)
+
+  let rig: FrogRig | undefined
+  let disposed = false
   let gaitTime = 0
   let walkBlend = 0
   let customization = normalizeCustomization(initialCustomization)
-  const anchors: Record<AccessorySlot, Group> = {
-    head: headAnchor, face: faceAnchor, neck: neckAnchor, hand: handAnchor,
-  }
 
-  const clearAnchor = (anchor: Group): void => {
+  const clearAnchor = (anchor: Object3D): void => {
     anchor.traverse((object) => {
       if (object instanceof Mesh) object.geometry.dispose()
     })
     anchor.clear()
   }
 
-  const applyCustomization = (nextCustomization: FrogCustomization): void => {
-    customization = normalizeCustomization(nextCustomization)
-    bodyMaterial.color.set(FROG_COLOR_VALUES[customization.color].value)
-    clearAnchor(bodyAnchor)
+  const applyToRig = (): void => {
+    if (!rig) return
+    rig.bodyMaterial.color.set(FROG_COLOR_VALUES[customization.color].value)
+    clearAnchor(rig.anchors.body)
     for (const slot of ['head', 'face', 'neck', 'hand'] as const) {
-      const anchor = anchors[slot]
+      const anchor = rig.anchors[slot]
       clearAnchor(anchor)
       const accessory = customization[slot]
       if (!accessory) continue
-      const targetAnchor = accessory === 'crossbody_bag' ? bodyAnchor : anchor
+      const targetAnchor = accessory === 'crossbody_bag' ? rig.anchors.body : anchor
       targetAnchor.add(createAccessoryModel(accessory))
     }
   }
 
-  applyCustomization(customization)
+  const disposeRig = (target: FrogRig): void => {
+    for (const anchor of Object.values(target.anchors)) clearAnchor(anchor)
+    const geometries = new Set<BufferGeometry>()
+    const materials = new Set<Material>()
+    target.root.traverse((object) => {
+      if (object instanceof Mesh) {
+        if (!object.userData.sharedGeometry) geometries.add(object.geometry)
+        const meshMaterials = Array.isArray(object.material) ? object.material : [object.material]
+        for (const material of meshMaterials) materials.add(material)
+      }
+    })
+    for (const geometry of geometries) geometry.dispose()
+    for (const material of materials) material.dispose()
+    target.root.removeFromParent()
+  }
+
+  void preloadKkebookModel().then((template) => {
+    if (disposed) return
+    const next = (template && createKkebookRig(template)) ?? createProceduralRig()
+    rig = next
+    model.position.y = next.groundOffset
+    model.add(next.root)
+    applyToRig()
+  })
 
   return {
     root: model,
-    applyCustomization,
+    applyCustomization(nextCustomization: FrogCustomization): void {
+      customization = normalizeCustomization(nextCustomization)
+      applyToRig()
+    },
     getCustomization(): FrogCustomization { return { ...customization } },
     dispose(): void {
-      for (const anchor of Object.values(anchors)) clearAnchor(anchor)
-      clearAnchor(bodyAnchor)
-      const geometries = new Set<BufferGeometry>()
-      const materials = new Set<Material>()
-      model.traverse((object) => {
-        if (object instanceof Mesh) {
-          geometries.add(object.geometry)
-          const meshMaterials = Array.isArray(object.material) ? object.material : [object.material]
-          for (const material of meshMaterials) materials.add(material)
-        }
-      })
-      for (const geometry of geometries) geometry.dispose()
-      for (const material of materials) material.dispose()
+      disposed = true
+      if (rig) disposeRig(rig)
+      rig = undefined
     },
     updateAnimation(deltaSeconds: number, state: CharacterAnimationState): void {
       const blend = 1 - Math.exp(-10 * deltaSeconds)
@@ -288,17 +404,20 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
       if (state.isWalking) {
         gaitTime += deltaSeconds * Math.max(5.2, state.movementSpeed * 2.65)
       }
+      if (!rig) return
 
-      const legSwing = Math.sin(gaitTime) * 0.28 * walkBlend
-      const armSwing = legSwing * 0.7
-      const bodyBob = Math.abs(Math.sin(gaitTime)) * 0.018 * walkBlend
+      const stride = Math.sin(gaitTime)
+      const legSwing = stride * WALK_ANIMATION.legSwing * walkBlend
+      const armSwing = legSwing * WALK_ANIMATION.armSwing
+      const bodyBob = Math.abs(stride) * WALK_ANIMATION.bob * walkBlend
 
-      leftHip.rotation.x = legSwing
-      rightHip.rotation.x = -legSwing
-      leftShoulder.rotation.x = -armSwing
-      rightShoulder.rotation.x = armSwing
-      body.position.y = 0.86 + bodyBob
-      belly.position.y = 0.82 + bodyBob
+      rig.leftHip.rotation.x = legSwing
+      rig.rightHip.rotation.x = -legSwing
+      rig.leftShoulder.rotation.x = -armSwing
+      rig.rightShoulder.rotation.x = armSwing
+      for (const part of rig.bobParts) part.object.position.y = part.baseY + bodyBob
+      // Leans onto the stepping foot for a toy-like waddle; pivots at the feet.
+      rig.root.rotation.z = stride * WALK_ANIMATION.waddle * walkBlend
     },
   }
 }

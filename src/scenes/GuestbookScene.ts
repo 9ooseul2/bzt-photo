@@ -170,6 +170,8 @@ export class GuestbookScene {
     light.position.set(7, 15, 9)
     light.castShadow = true
     light.shadow.mapSize.set(2048, 2048)
+    // 매끈한 곡면(캐릭터)에 생기는 물결 무늬 그림자를 막는 보정값
+    light.shadow.normalBias = 0.04
     light.shadow.camera.left = -22
     light.shadow.camera.right = 22
     light.shadow.camera.top = 18

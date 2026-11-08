@@ -1,5 +1,5 @@
 import { AmbientLight, Clock, Color, DirectionalLight, Group, Mesh, MeshStandardMaterial, PerspectiveCamera, PlaneGeometry, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
-import { createFrogVisitorModel, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
+import { createFrogVisitorModel, FROG_PREVIEW_SCALE, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
 import type { FrogCustomization } from '../characters/customization/types.ts'
 
 /** Isolated renderer for the dressing screen. It never registers exhibition controls. */
@@ -23,6 +23,7 @@ export class FrogPreview {
     host.append(this.renderer.domElement)
     this.frog = createFrogVisitorModel(customization)
     this.turntable.add(this.frog.root)
+    this.turntable.scale.setScalar(FROG_PREVIEW_SCALE)
     this.scene.background = new Color('#f4efe4')
     this.scene.add(this.turntable, new AmbientLight('#fff8e9', 2.2))
     const key = new DirectionalLight('#fff1d4', 2.5)
