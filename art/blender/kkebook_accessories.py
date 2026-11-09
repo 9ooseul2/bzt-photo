@@ -1,6 +1,7 @@
 """
 B_photoproject (bzt-photo) - kkebook 악세서리 GLB 제작 스크립트
-머리 악세서리 3종 (beanie, cap, headset) + 얼굴 악세서리 3종 (glasses, sunglasses, bubble_gum)
+머리 3종 (beanie, cap, headset) + 얼굴 3종 (glasses, sunglasses, bubble_gum)
++ 목 3종 (scarf, crossbody_bag, bow_tie)
 Blender 3.6 / 4.x 대응
 
 실행: Scripting 탭 > Text Editor > 이 파일 열기(또는 붙여넣기) > Run Script (Alt+P)
@@ -14,6 +15,8 @@ GLB 규칙
 - 원점 = 그 악세서리가 붙는 kkebook 앵커. 코드에서 앵커에 붙이기만 하면 제자리에 놓입니다.
     머리 악세서리 -> kkebook-head-anchor (머리 윗면 정중앙)
     얼굴 악세서리 -> kkebook-face-anchor (눈과 입 사이, 얼굴 표면)
+    목도리, 나비넥타이 -> kkebook-neck-anchor (머리와 몸 사이 중앙)
+    크로스백 -> kkebook-body-anchor (몸통 중앙)
 - 크기 = kkebook과 같은 단위. 정면 = Three.js +Z (내보내기 시 자동 변환)
 """
 import math
@@ -27,7 +30,7 @@ HEAD_ANCHOR = (0.0, 0.0, 2.592)      # kkebook-head-anchor 위치 (시안 단위
 FACE_ANCHOR = (0.0, -0.8857, 2.195)  # kkebook-face-anchor 위치 (시안 단위)
 
 EXPORT_DIR = ""                      # 비워두면 내보내기 안 함
-BUILD = ["glasses", "sunglasses", "bubble_gum"]   # 머리 3종도 다시 만들려면 "beanie", "cap", "headset" 추가
+BUILD = ["scarf", "crossbody_bag", "bow_tie"]   # 다른 악세서리도 다시 만들려면 ID를 추가 (예: "beanie", "glasses")
 
 COLORS = {
     "Acc_Knit_Red":   "#C94F4A",
@@ -43,6 +46,11 @@ COLORS = {
     "Acc_Sun_Lens":      "#24262B",
     "Acc_Gum":           "#F4C4D6",
     "Acc_Gum_Ring":      "#EDB9CC",
+    "Acc_Strap":         "#8A5A3B",
+    "Acc_Bag":           "#D9B98C",
+    "Acc_Gold":          "#D6964B",
+    "Acc_Bowtie":        "#1E1E22",
+    "Acc_Bowtie_Knot":   "#2B2B30",
 }
 # 반투명 재질의 불투명도 (1 = 불투명). 여기에 있는 재질은 glTF에서 반투명(BLEND)으로 내보냄
 ALPHA = {"Acc_Glass_Lens": 0.22, "Acc_Gum": 0.82}
@@ -51,6 +59,7 @@ ROUGHNESS = {
     "Acc_Cream": 0.8, "Acc_Band": 0.6, "Acc_Gray": 0.55,
     "Acc_Glasses_Frame": 0.45, "Acc_Glass_Lens": 0.05, "Acc_Sun_Frame": 0.4, "Acc_Sun_Lens": 0.12,
     "Acc_Gum": 0.18, "Acc_Gum_Ring": 0.35,
+    "Acc_Strap": 0.6, "Acc_Bag": 0.75, "Acc_Gold": 0.35, "Acc_Bowtie": 0.45, "Acc_Bowtie_Knot": 0.4,
 }
 
 TOP = 2.60                           # 돌기 사이 윗면 높이
@@ -115,11 +124,50 @@ BUBBLE_GUM = dict(                   # 입에서 부푼 풍선껌
     ring=(0.08, 0.065, 0.03),        # 입가에 뭉친 껌 고리 (가로, 세로, 굵기)
 )
 
+# ---- 목 악세서리 ----
+SCARF = dict(                        # 니트 목도리, 흰/빨 줄무늬
+    z=1.08,                          # 목에 감기는 기본 높이
+    wrap_half=(0.09, 0.12),          # 감긴 부분 단면 (두께, 높이)
+    head_overlap=0.03,               # 목도리 윗단이 머리 아랫면에 살짝 닿게 (어깨가 드러나지 않게)
+    arm_overlap=0.45,                # 팔이 목도리 안쪽으로 들어가도 되는 깊이 (두께 대비). 클수록 몸에 붙음
+    tail_half=(0.045, 0.16),         # 늘어진 꼬리 단면 (두께, 폭)
+    tail_theta=-1.02,                # 꼬리 위치 (라디안, 0 = 화면 오른쪽 옆, -1.57 = 정면)
+    tail_length=0.50,
+    stripe_len=0.30,                 # 줄무늬 한 칸 길이 (감긴 부분은 둘레에 맞게 자동 조정)
+    cables=4,                        # 단면 둘레의 꽈배기 기둥 수
+    cable_twist_h=0.16, cable_depth=0.0, stitch_row_h=0.03,   # cable_depth를 올리면 꽈배기 무늬 (예: 0.32)
+    fringe=7, fringe_len=0.10,       # 꼬리 끝 술
+)
+CROSSBODY = dict(                    # 오른쪽 어깨 -> 왼쪽(화면 왼쪽) 엉덩이로 비스듬한 끈 + 가방
+    strap_center_z=0.86, strap_tilt=0.28,   # 끈이 가장 높은 곳 = center+tilt (화면 오른쪽 어깨)
+    strap_half=(0.02, 0.055),        # 끈 단면 (두께, 폭)
+    clearance=0.035,                 # 몸, 배, 팔, 다리와 끈 사이 최소 간격
+    bag_theta=math.pi + 1.0,         # 가방 위치 (화면 왼쪽 앞)
+    bag_z=0.60,
+    bag_half=(0.28, 0.21, 0.10),     # 가방 크기 (가로, 세로, 두께)의 절반
+    flap_h=0.12,                     # 덮개 높이의 절반
+)
+BOWTIE = dict(                       # 검정 나비넥타이 (목 끈 없음)
+    z=1.07,
+    wing=(0.27, 0.18, 0.07),         # 날개 하나 (길이, 바깥쪽 높이, 두께)의 절반
+    pinch=0.36,                      # 가운데 쪽 날개 높이 비율 (작을수록 잘록)
+    knot=(0.075, 0.085, 0.065),
+)
+
 # kkebook 머리 형태 (kkebook_character.py와 같은 값). 비니가 머리 곡면에 붙도록 맞출 때 사용
 KK_W = 0.88
 KK_HEAD = dict(lower_c=(0.0, 0.0, 1.65), lower_r=(1.42*KK_W, 0.98, 0.52),
                upper_c=(0.0, 0.0, 1.97), upper_r=(1.08*KK_W, 0.90, 0.62), blend=0.48,
                bump_x=0.86*KK_W, bump_y=0.02, bump_z=2.40, bump_r=0.39, bump_blend=0.29)
+
+# kkebook 몸 형태 (kkebook_character.py와 같은 값). 목/몸 악세서리가 몸에 파묻히지 않게 할 때 사용
+KK_BODY = dict(upper_c=(0.0, 0.0, 1.02), upper_r=(0.72, 0.64, 0.55),
+               lower_c=(0.0, 0.0, 0.66), lower_r=(0.86, 0.74, 0.44), blend=0.30)
+KK_BELLY = dict(center=(0.0, -0.44, 0.78), radii=(0.58, 0.36, 0.43))
+KK_ARM = dict(shoulder=(0.72, -0.05, 1.12), hand=(1.04, -0.12, 0.80), r0=0.18, r1=0.24)
+KK_LEG = dict(hip=(0.40, 0.0, 0.60), foot=(0.42, -0.06, 0.22), r0=0.21, r1=0.25)
+NECK_ANCHOR = (0.0, 0.0, 1.30)       # kkebook-neck-anchor
+BODY_ANCHOR = (0.0, 0.0, 0.95)       # kkebook-body-anchor (크로스백)
 
 # ============================================================
 # 2. 메쉬 생성 (bpy 없이 동작)
@@ -584,11 +632,269 @@ def build_bubble_gum():
     m.add(*tube(pts, t, t*0.75, lambda i: d, segs=16), "Acc_Gum_Ring")
     return m
 
+# ---------------- 목 악세서리 ----------------
+def _taper_capsule(p, a, b, ra, rb):
+    pa, ba = sub(p, a), sub(b, a)
+    t = max(0.0, min(1.0, dot(pa, ba)/dot(ba, ba)))
+    q = sub(pa, mul(ba, t))
+    return math.sqrt(dot(q, q)) - (ra + (rb-ra)*t)
+
+def torso_sdf(p):
+    b = KK_BODY
+    d = _smin(_ell(p, b["upper_c"], b["upper_r"]), _ell(p, b["lower_c"], b["lower_r"]), b["blend"])
+    return min(d, _ell(p, KK_BELLY["center"], KK_BELLY["radii"]))
+
+def limbs_sdf(p):
+    d = 1e9
+    for s_ in (-1, 1):
+        a, h = KK_ARM, KK_LEG
+        d = min(d, _taper_capsule(p, (s_*a["shoulder"][0], a["shoulder"][1], a["shoulder"][2]),
+                                  (s_*a["hand"][0], a["hand"][1], a["hand"][2]), a["r0"], a["r1"]))
+        d = min(d, _taper_capsule(p, (s_*h["hip"][0], h["hip"][1], h["hip"][2]),
+                                  (s_*h["foot"][0], h["foot"][1], h["foot"][2]), h["r0"], h["r1"]))
+    return d
+
+def character_sdf(p):
+    return min(torso_sdf(p), limbs_sdf(p), head_sdf(p))
+
+def sdf_grad(f, p, e=1e-4):
+    return norm((f((p[0]+e, p[1], p[2])) - f((p[0]-e, p[1], p[2])),
+                 f((p[0], p[1]+e, p[2])) - f((p[0], p[1]-e, p[2])),
+                 f((p[0], p[1], p[2]+e)) - f((p[0], p[1], p[2]-e))))
+
+def head_bottom_z(x, y):
+    """(x, y) 바로 위 머리 아랫면 높이 (머리 밖이면 머리 아랫부분 최고 높이)"""
+    hi = 1.65
+    if head_sdf((x, y, hi)) > 0:
+        return 1.40
+    lo = 0.9
+    for _ in range(40):
+        m = 0.5*(lo+hi)
+        if head_sdf((x, y, m)) < 0: hi = m
+        else: lo = m
+    return hi
+
+def torso_point(theta, z):
+    """몸통 축 (0,0,z)에서 theta 방향 수평으로 나가며 만나는 가장 바깥 몸통 표면"""
+    d = (math.cos(theta), math.sin(theta), 0.0)
+    lo, hi = 0.0, 2.0
+    for _ in range(50):
+        m = 0.5*(lo+hi)
+        if torso_sdf(add((0, 0, z), mul(d, m))) < 0: lo = m
+        else: hi = m
+    p = add((0, 0, z), mul(d, lo))
+    return p, sdf_grad(torso_sdf, p)
+
+def push_out(pts, f, clearance, smooth=3, closed=False, level=False):
+    """선 위의 점들을 f 표면에서 clearance 이상 떨어지게 밀어내고 부드럽게 다듬음.
+    level=True면 높이는 그대로 두고 수평으로만 밀어냄 (목도리가 같은 높이로 둘러지게)"""
+    pts = list(pts)
+    for _ in range(smooth + 1):
+        for i, q in enumerate(pts):
+            for _ in range(40):
+                d = f(q)
+                if d >= clearance: break
+                g = sdf_grad(f, q)
+                if level:
+                    g = norm((g[0], g[1], 0.0)) if abs(g[0]) + abs(g[1]) > 1e-6 else norm((q[0], q[1], 0.0))
+                q = add(q, mul(g, clearance - d + 0.002))
+            pts[i] = q
+        if _ == smooth: break
+        n = len(pts); new = list(pts)
+        for i in range(n):
+            if not closed and i in (0, n-1): continue
+            a, b = pts[(i-1) % n], pts[(i+1) % n]
+            new[i] = mul(add(add(a, b), mul(pts[i], 2.0)), 0.25)
+        pts = new
+    return pts
+
+def cable_strength(u, h, twist_h, stitch_h):
+    """꽈배기 니트 무늬 (털모자와 같은 방식). u = 기둥 안 위치 0~1, h = 길이 방향 거리. 0~1 반환"""
+    def rope(x, c, w):
+        q = (x - c)/w
+        return math.sqrt(1 - q*q) if abs(q) < 1 else 0.0
+    ph = 2*math.pi*h/twist_h
+    if 0.18 < u < 0.82:
+        x = (u - 0.5)/0.32
+        ra, rb = rope(x, 0.5*math.sin(ph), 0.52), rope(x, -0.5*math.sin(ph), 0.52)
+        front = math.cos(ph)
+        ha, hb = ra*(0.78 + 0.22*front), rb*(0.78 - 0.22*front)
+        lean = 1 if ha >= hb else -1
+        stitch = 0.9 + 0.1*math.cos(2*math.pi*(h/stitch_h + lean*1.2*x))
+        d = 0.25 + 0.75*max(ha, hb)*stitch
+        return d*min(1.0, (0.82 - u)/0.03, (u - 0.18)/0.03)
+    v = (u + 0.5) % 1.0 - 0.5
+    return 0.05 + 0.3*math.exp(-(v/0.05)**2)*(0.85 + 0.15*math.cos(2*math.pi*h/stitch_h))
+
+def knit_band(m, pts, normals, half_t, half_w, stripe_len, mats, closed=False, segs=40, k=None):
+    """pts를 따라가는 꽈배기 니트 띠. 길이 방향으로 mats 색이 stripe_len마다 번갈아 바뀜"""
+    k = k or SCARF
+    n = len(pts)
+    acc = [0.0]
+    for i in range(1, n):
+        acc.append(acc[-1] + math.sqrt(dot(sub(pts[i], pts[i-1]), sub(pts[i], pts[i-1]))))
+    verts = []
+    for i, p in enumerate(pts):
+        if closed:
+            tg = norm(sub(pts[(i+1) % n], pts[(i-1) % n]))
+        else:
+            tg = norm(sub(pts[min(i+1, n-1)], pts[max(i-1, 0)]))
+        w = norm(sub(normals[i], mul(tg, dot(normals[i], tg)))); d = cross(tg, w)
+        for j in range(segs):
+            a = 2*math.pi*j/segs
+            u = (k["cables"]*j/segs) % 1.0
+            r = 1.0 + k["cable_depth"]*(cable_strength(u, acc[i], k["cable_twist_h"], k["stitch_row_h"]) - 0.4)
+            # 둥근 사각 단면 (납작한 니트 띠)
+            c, s_ = math.cos(a), math.sin(a)
+            c, s_ = math.copysign(abs(c)**0.7, c), math.copysign(abs(s_)**0.7, s_)
+            verts.append(add(p, add(mul(w, half_t*r*c), mul(d, half_w*r*s_))))
+    faces_by = [[] for _ in mats]
+    rows = n if closed else n - 1
+    for i in range(rows):
+        i2 = (i+1) % n
+        mid = 0.5*(acc[i] + (acc[i2] if i2 else acc[-1] + math.sqrt(dot(sub(pts[0], pts[-1]), sub(pts[0], pts[-1])))))
+        band = int(mid // stripe_len) % len(mats)
+        for j in range(segs):
+            a = i*segs + j; b = i*segs + (j+1) % segs
+            faces_by[band].append((a, b, i2*segs + (j+1) % segs, i2*segs + j))
+    if not closed:                      # 양 끝 막기
+        for end, flip in ((0, False), (n-1, True)):
+            c = len(verts); verts.append(pts[end])
+            band = (0 if end == 0 else int(acc[-1] // stripe_len) % len(mats))
+            for j in range(segs):
+                f = (end*segs + j, end*segs + (j+1) % segs, c)
+                faces_by[band].append(f[::-1] if flip else f)
+    for mat, faces in zip(mats, faces_by):
+        if faces:
+            m.add(verts, faces, mat)
+    return acc[-1]
+
+def build_scarf():
+    k = SCARF; m = MeshBuilder(); mats = ["Acc_Knit_White", "Acc_Knit_Red"]
+    t_w, h_w = k["wrap_half"]
+    # 감긴 부분: 목 둘레를 한 바퀴 (머리, 몸에 파묻히지 않게)
+    # 팔은 목도리 안쪽 일부까지 들어와도 됨 -> 목도리가 팔 위에 얹힌 모양
+    fit = lambda q: min(torso_sdf(q), head_sdf(q), limbs_sdf(q) + t_w*(0.85 + k["arm_overlap"]))
+    ring, rn = [], []
+    for i in range(200):
+        th = 2*math.pi*i/200
+        p, n = torso_point(th, k["z"])
+        ring.append(add(p, mul(n, t_w*0.8)))
+    for _ in range(3):
+        # 몸과 배 경계에서 꺾이지 않게 다듬으며 수평으로 밀어냄
+        ring = push_out(ring, fit, t_w*0.85, smooth=12, closed=True, level=True)
+        # 윗단을 머리 아랫면에 맞춰 올림: 머리 가장자리 쪽(어깨 위)일수록 높아져 어깨를 덮음
+        zs = [head_bottom_z(q[0], q[1]) - h_w + k["head_overlap"] for q in ring]
+        zs = [sum(zs[(i+j) % len(zs)] for j in range(-6, 7))/13 for i in range(len(zs))]
+        ring = [(q[0], q[1], max(k["z"], z)) for q, z in zip(ring, zs)]
+    rn = [norm((q[0], q[1], 0.0)) for q in ring]      # 단면 방향: 몸 중심에서 바깥 (꼬임 없이 고르게)
+    length = sum(math.sqrt(dot(sub(ring[i], ring[i-1]), sub(ring[i], ring[i-1]))) for i in range(len(ring)))
+    bands = max(2, 2*round(length/k["stripe_len"]/2))       # 짝수 칸이라 이음매에서 색이 이어짐
+    knit_band(m, ring, rn, t_w, h_w, length/bands, mats, closed=True, segs=24)
+    # 늘어진 꼬리
+    t_t, w_t = k["tail_half"]
+    tail, tn = [], []
+    for i in range(31):
+        f = i/30
+        p, n = torso_point(k["tail_theta"] - 0.12*f, k["z"] - 0.04 - k["tail_length"]*f)
+        tail.append(add(p, mul(n, t_w*1.6 + t_t))); tn.append(n)
+    tail = push_out(tail, character_sdf, t_t + 0.015, smooth=2)
+    tl = knit_band(m, tail, tn, t_t, w_t, k["stripe_len"], mats, segs=20)
+    # 꼬리 끝 술 (마지막 칸 색)
+    last = mats[int(tl // k["stripe_len"]) % 2]
+    end, en = tail[-1], tn[-1]
+    tg = norm(sub(tail[-1], tail[-2])); side = norm(cross(tg, en))
+    for j in range(k["fringe"]):
+        x = (j/(k["fringe"]-1) - 0.5)*2*w_t*0.85
+        a = add(end, mul(side, x))
+        b = add(add(a, mul(tg, k["fringe_len"])), mul(en, 0.01))
+        m.add(*tube([a, mul(add(a, b), 0.5), b], 0.016, 0.016, lambda i: en, segs=8), last)
+    return m
+
+def rounded_box(center, axes, half, e=0.35, rings=14, segs=28):
+    """둥근 상자 (초타원체). axes = (가로, 세로, 앞) 단위벡터, half = 각 축 반지름"""
+    ax, ay, az = axes; hx, hy, hz = half
+    f = lambda v: math.copysign(abs(v)**e, v)
+    verts, faces = [], []
+    for i in range(rings+1):
+        ph = -math.pi/2 + math.pi*i/rings
+        for j in range(segs):
+            th = 2*math.pi*j/segs
+            lx = hx*f(math.cos(ph))*f(math.cos(th)); lz = hz*f(math.cos(ph))*f(math.sin(th)); ly = hy*f(math.sin(ph))
+            verts.append(add(center, add(add(mul(ax, lx), mul(ay, ly)), mul(az, lz))))
+    for i in range(rings):
+        for j in range(segs):
+            a = i*segs + j; b = i*segs + (j+1) % segs
+            faces.append((a, a+segs, b+segs, b))
+    return verts, faces
+
+def build_crossbody_bag():
+    k = CROSSBODY; m = MeshBuilder()
+    st, sw = k["strap_half"]
+    # 기울어진 고리 모양 끈: theta=0(화면 오른쪽 어깨)이 가장 높고 반대편(화면 왼쪽 엉덩이)이 가장 낮음
+    pts = []
+    for i in range(160):
+        th = 2*math.pi*i/160
+        p, n = torso_point(th, k["strap_center_z"] + k["strap_tilt"]*math.cos(th))
+        pts.append(add(p, mul(n, st + k["clearance"])))
+    pts = push_out(pts, character_sdf, st + k["clearance"], smooth=4, closed=True)
+    nrm = [sdf_grad(character_sdf, q) for q in pts]
+    m.add(*tube(pts + [pts[0]], st, sw, lambda i: (nrm + [nrm[0]])[i], segs=10), "Acc_Strap")
+    # 가방: 끈 가장 낮은 곳 근처, 몸과 다리에 닿지 않게 바깥으로 띄움
+    hx, hy, hz = k["bag_half"]
+    p, n = torso_point(k["bag_theta"], k["bag_z"])
+    out = norm((n[0], n[1], 0.0)); up = (0.0, 0.0, 1.0); side = cross(up, out)
+    axes = (side, up, out)
+    c = add(p, mul(out, hz))
+    for _ in range(60):
+        corners = [add(c, add(add(mul(side, sx*hx*0.9), mul(up, sy*hy*0.9)), mul(out, sz*hz)))
+                   for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+        if min(character_sdf(q) for q in corners) >= 0.02: break
+        c = add(c, mul(out, 0.01))
+    m.add(*rounded_box(c, axes, (hx, hy, hz)), "Acc_Bag")
+    fh = k["flap_h"]
+    fc = add(add(c, mul(up, hy - fh*0.95)), mul(out, hz*0.9))
+    m.add(*rounded_box(fc, axes, (hx*1.02, fh, 0.018)), "Acc_Strap")
+    m.add(*rounded_box(add(add(fc, mul(up, -fh*0.85)), mul(out, 0.02)), axes, (0.035, 0.035, 0.016), e=0.9), "Acc_Gold")
+    # 끈과 가방 양옆을 잇는 짧은 고리
+    for sx in (-1, 1):
+        top = add(add(c, mul(side, sx*hx*0.92)), mul(up, hy*0.9))
+        j = min(range(len(pts)), key=lambda i: dot(sub(pts[i], top), sub(pts[i], top)))
+        m.add(*tube([pts[j], mul(add(pts[j], top), 0.5), top], st, sw*0.7, lambda i: out, segs=10), "Acc_Strap")
+    return m
+
+def build_bowtie():
+    k = BOWTIE; m = MeshBuilder()
+    p, n = torso_point(-math.pi/2, k["z"])
+    x, y, w = frame_from_normal(n)
+    lx, ly, lz = k["wing"]
+    center = add(p, mul(w, lz + 0.03))
+    for s_ in (-1, 1):
+        verts, faces = rounded_box((0, 0, 0), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (1, 1, 1), e=0.45, rings=16, segs=40)
+        out = []
+        for vx, vy, vz in verts:
+            # 둥근 상자 -> 매듭 쪽이 잘록하고 바깥 끝이 넓은 날개 (t: 0=매듭, 1=끝)
+            t = (vx + 1.0)/2.0
+            hgt = k["pinch"] + (1 - k["pinch"])*t**0.8
+            fold = 1.0 - 0.18*math.exp(-(vy/0.25)**2)*math.sin(math.pi*t)   # 가운데 가로 주름
+            px = s_*(vx + 1.0)*lx
+            pz = vz*lz*(0.55 + 0.45*t)*fold
+            out.append(add(center, add(add(mul(x, px), mul(y, vy*ly*hgt)), mul(w, pz))))
+        if s_ < 0:
+            faces = [f[::-1] for f in faces]
+        m.add(out, faces, "Acc_Bowtie")
+    kx, ky, kz = k["knot"]
+    m.add(*lathe([(r, h*kz) for r, h in ellipse_profile(1.0, 12)], 28, frame=(x, y, w), center=add(center, mul(w, 0.01)),
+                 sx=kx, sy=ky), "Acc_Bowtie_Knot")
+    return m
+
 BUILDERS = {"beanie": build_beanie, "cap": build_cap, "headset": build_headset,
-            "glasses": build_glasses, "sunglasses": build_sunglasses, "bubble_gum": build_bubble_gum}
+            "glasses": build_glasses, "sunglasses": build_sunglasses, "bubble_gum": build_bubble_gum,
+            "scarf": build_scarf, "crossbody_bag": build_crossbody_bag, "bow_tie": build_bowtie}
 # 악세서리마다 붙는 앵커 (GLB 원점)
 ANCHOR_OF = {"beanie": HEAD_ANCHOR, "cap": HEAD_ANCHOR, "headset": HEAD_ANCHOR,
-             "glasses": FACE_ANCHOR, "sunglasses": FACE_ANCHOR, "bubble_gum": FACE_ANCHOR}
+             "glasses": FACE_ANCHOR, "sunglasses": FACE_ANCHOR, "bubble_gum": FACE_ANCHOR,
+             "scarf": NECK_ANCHOR, "crossbody_bag": BODY_ANCHOR, "bow_tie": NECK_ANCHOR}
 
 def hex_to_linear(hx):
     hx = hx.lstrip("#")

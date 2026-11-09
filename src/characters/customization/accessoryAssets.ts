@@ -12,6 +12,7 @@ import type { AccessoryId } from './types.ts'
 export const GLB_ACCESSORIES: ReadonlySet<AccessoryId> = new Set<AccessoryId>([
   'beanie', 'cap', 'headset',
   'glasses', 'sunglasses', 'bubble_gum',
+  'scarf', 'crossbody_bag', 'bow_tie',
 ])
 
 const loader = new GLTFLoader()

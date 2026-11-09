@@ -104,7 +104,7 @@ export function createAccessoryModel(id: AccessoryId): Group {
     const bagFlap = mesh(new BoxGeometry(0.34, 0.115, 0.03), cream); bagFlap.name = 'bag-flap'; bagFlap.position.set(0.38, -0.19, 0.615)
     const clasp = mesh(sphere, gold); clasp.name = 'clasp'; clasp.scale.set(0.035, 0.035, 0.02); clasp.position.set(0.38, -0.225, 0.637)
     group.add(frontStrap, backStrap, shoulderStrap, bagBody, bagFlap, clasp)
-  } else if (id === 'ribbon') {
+  } else if (id === 'bow_tie') {
     const band = createNeckBand(cream)
     const center = mesh(sphere, gold); center.scale.set(0.07, 0.07, 0.048); center.position.z = 0.45
     const left = mesh(sphere, red); left.scale.set(0.16, 0.1, 0.05); left.position.set(-0.14, 0, 0.45)
