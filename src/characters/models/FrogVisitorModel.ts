@@ -16,7 +16,13 @@ import type { CharacterAnimationState, CharacterVisual } from '../CharacterVisua
 import type { VisitorCharacterConfig } from '../VisitorCharacter.ts'
 import { createAccessoryModel } from '../customization/FrogAccessories.ts'
 import { GLB_ACCESSORIES, loadAccessoryTemplate, preloadAccessoryTemplates } from '../customization/accessoryAssets.ts'
-import { FROG_COLOR_VALUES, normalizeCustomization, type AccessorySlot, type FrogCustomization } from '../customization/types.ts'
+import {
+  FROG_COLOR_VALUES,
+  normalizeCustomization,
+  type AccessoryId,
+  type AccessorySlot,
+  type FrogCustomization,
+} from '../customization/types.ts'
 
 /**
  * 캐릭터 크기. 숫자를 줄이면 작아진다 (0.602 = 처음 크기).
@@ -92,6 +98,19 @@ export const KKEBOOK_ACCESSORY_FIT: Readonly<Record<AnchorKey, AnchorFit>> = {
   hand: {},
 }
 
+/** kkebook.glb 안의 입 3종 (kkebook-mouth-<id>). 한 번에 하나만 보인다. */
+const KKEBOOK_MOUTHS = ['triangle', 'round', 'cat'] as const
+type KkebookMouth = (typeof KKEBOOK_MOUTHS)[number]
+
+/**
+ * 얼굴 악세서리를 쓰면 바뀌는 입. 여기에 없으면 기본 세모 입.
+ * 새 표정을 추가하려면 Blender 스크립트에 입을 만들고 KKEBOOK_MOUTHS와 여기에 이름을 넣는다.
+ */
+const MOUTH_FOR_ACCESSORY: Partial<Record<AccessoryId, KkebookMouth>> = {
+  sunglasses: 'cat',
+  bubble_gum: 'round',
+}
+
 const KKEBOOK_URL = publicAsset('models/characters/kkebook.glb')
 
 const BODY_COLOR = '#b9e59a'
@@ -118,6 +137,8 @@ interface FrogRig {
   rightShoulder: Object3D
   bobParts: { object: Object3D; baseY: number }[]
   anchors: Record<AnchorKey, Object3D>
+  /** kkebook 입 부품. 예전 GLB나 기본 개구리처럼 입이 따로 없으면 빈 객체 */
+  mouths: Partial<Record<KkebookMouth, Object3D>>
 }
 
 let kkebookTemplate: Promise<Object3D | null> | undefined
@@ -195,6 +216,11 @@ function createKkebookRig(template: Object3D): FrogRig | null {
   }
 
   const anchors: Record<AnchorKey, Object3D> = { head, face, neck, body: bodyAnchor, hand }
+  const mouths: Partial<Record<KkebookMouth, Object3D>> = {}
+  for (const id of KKEBOOK_MOUTHS) {
+    const mouth = find(`mouth-${id}`)
+    if (mouth) mouths[id] = mouth
+  }
 
   // Everything above the legs bobs together while the feet stay on the floor.
   const partsContainer = leftHip.parent ?? root
@@ -213,6 +239,7 @@ function createKkebookRig(template: Object3D): FrogRig | null {
     rightShoulder,
     bobParts,
     anchors,
+    mouths,
   }
 }
 
@@ -336,6 +363,7 @@ function createProceduralRig(): FrogRig {
     rightShoulder,
     bobParts: [{ object: body, baseY: 0.86 }, { object: belly, baseY: 0.82 }],
     anchors: { head: headAnchor, face: faceAnchor, neck: neckAnchor, body: bodyAnchor, hand: handAnchor },
+    mouths: {},
   }
 }
 
@@ -365,6 +393,13 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
   const applyToRig = (): void => {
     if (!rig) return
     rig.bodyMaterial.color.set(FROG_COLOR_VALUES[customization.color].value)
+    // 얼굴 악세서리에 맞는 입만 보이게 한다 (그 입이 파일에 없으면 기본 세모 입 유지)
+    const wanted = (customization.face && MOUTH_FOR_ACCESSORY[customization.face]) || 'triangle'
+    const shownMouth = rig.mouths[wanted] ? wanted : 'triangle'
+    for (const id of KKEBOOK_MOUTHS) {
+      const mouth = rig.mouths[id]
+      if (mouth) mouth.visible = id === shownMouth
+    }
     clearAnchor(rig.anchors.body)
     for (const slot of ['head', 'face', 'neck', 'hand'] as const) {
       const anchor = rig.anchors[slot]

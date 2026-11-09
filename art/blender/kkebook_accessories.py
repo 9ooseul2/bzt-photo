@@ -1,6 +1,6 @@
 """
 B_photoproject (bzt-photo) - kkebook 악세서리 GLB 제작 스크립트
-1차: 머리 악세서리 3종 (beanie, cap, headset)
+머리 악세서리 3종 (beanie, cap, headset) + 얼굴 악세서리 3종 (glasses, sunglasses, bubble_gum)
 Blender 3.6 / 4.x 대응
 
 실행: Scripting 탭 > Text Editor > 이 파일 열기(또는 붙여넣기) > Run Script (Alt+P)
@@ -8,10 +8,12 @@ Blender 3.6 / 4.x 대응
 - 같은 파일에 kkebook 캐릭터가 있으면 악세서리가 머리 위 제자리에 얹혀 보입니다.
 - EXPORT_DIR에 폴더를 적으면 악세서리마다 따로 GLB로 내보냅니다.
   예: EXPORT_DIR = "/Users/hyone/Desktop/bzt-photo/public/models/accessories"
-  파일 이름은 프로젝트 악세서리 ID와 같습니다 (beanie.glb, cap.glb, headset.glb).
+  파일 이름은 프로젝트 악세서리 ID와 같습니다 (beanie.glb, cap.glb, ... bubble_gum.glb).
 
 GLB 규칙
-- 원점 = kkebook-head-anchor (머리 윗면 정중앙). 코드에서 앵커에 붙이기만 하면 제자리에 놓입니다.
+- 원점 = 그 악세서리가 붙는 kkebook 앵커. 코드에서 앵커에 붙이기만 하면 제자리에 놓입니다.
+    머리 악세서리 -> kkebook-head-anchor (머리 윗면 정중앙)
+    얼굴 악세서리 -> kkebook-face-anchor (눈과 입 사이, 얼굴 표면)
 - 크기 = kkebook과 같은 단위. 정면 = Three.js +Z (내보내기 시 자동 변환)
 """
 import math
@@ -22,9 +24,10 @@ import os
 # ============================================================
 S = 2.29 / 3.0                       # 시안 단위 -> 프로젝트 단위 (kkebook과 동일)
 HEAD_ANCHOR = (0.0, 0.0, 2.592)      # kkebook-head-anchor 위치 (시안 단위)
+FACE_ANCHOR = (0.0, -0.8857, 2.195)  # kkebook-face-anchor 위치 (시안 단위)
 
 EXPORT_DIR = ""                      # 비워두면 내보내기 안 함
-BUILD = ["beanie", "cap", "headset"]
+BUILD = ["glasses", "sunglasses", "bubble_gum"]   # 머리 3종도 다시 만들려면 "beanie", "cap", "headset" 추가
 
 COLORS = {
     "Acc_Knit_Red":   "#C94F4A",
@@ -34,10 +37,20 @@ COLORS = {
     "Acc_Cream":      "#FFF0CB",
     "Acc_Band":       "#E8E5DE",
     "Acc_Gray":       "#C9C6C1",
+    "Acc_Glasses_Frame": "#5A4034",
+    "Acc_Glass_Lens":    "#EAF4F8",
+    "Acc_Sun_Frame":     "#1C1C1F",
+    "Acc_Sun_Lens":      "#24262B",
+    "Acc_Gum":           "#F4C4D6",
+    "Acc_Gum_Ring":      "#EDB9CC",
 }
+# 반투명 재질의 불투명도 (1 = 불투명). 여기에 있는 재질은 glTF에서 반투명(BLEND)으로 내보냄
+ALPHA = {"Acc_Glass_Lens": 0.22, "Acc_Gum": 0.82}
 ROUGHNESS = {
     "Acc_Knit_Red": 0.9, "Acc_Knit_White": 0.95, "Acc_Cap_Color": 0.75, "Acc_Cap_Letter_Color": 0.6,
     "Acc_Cream": 0.8, "Acc_Band": 0.6, "Acc_Gray": 0.55,
+    "Acc_Glasses_Frame": 0.45, "Acc_Glass_Lens": 0.05, "Acc_Sun_Frame": 0.4, "Acc_Sun_Lens": 0.12,
+    "Acc_Gum": 0.18, "Acc_Gum_Ring": 0.35,
 }
 
 TOP = 2.60                           # 돌기 사이 윗면 높이
@@ -79,6 +92,27 @@ HEADSET = dict(
     cup_offset=0.10, cup_radii=(0.30, 0.30, 0.16),
     cushion_radii=(0.25, 0.25, 0.10),
     star_outer=0.13, star_inner=0.062, star_base=0.245, star_height=0.045,
+)
+
+# ---- 얼굴 악세서리 (렌즈 위치는 얼굴 정면 좌표: x = 좌우, z = 높이) ----
+GLASSES = dict(                      # 원형 안경, 다리 없음, 투명 유리알
+    lens_x=0.58, lens_z=2.43,        # 렌즈 중심 (눈 위에)
+    lens_r=(0.28, 0.28),             # 렌즈 크기 (가로, 세로 반지름)
+    frame_r=0.024,                   # 테 두께
+    clearance=0.035,                 # 얼굴 표면과 테 사이 최소 간격
+)
+SUNGLASSES = dict(                   # 좁은 사각 선글라스, 다리 없음
+    lens_x=0.56, lens_z=2.405,
+    lens_r=(0.32, 0.165),
+    frame_r=0.02,
+    clearance=0.035,
+    squareness=0.45,                 # 1 = 타원, 작을수록 각진 사각형
+)
+BUBBLE_GUM = dict(                   # 입에서 부푼 풍선껌
+    mouth_z=1.95,                    # kkebook 입 높이
+    r=0.30,                          # 풍선 반지름
+    drop=0.25,                       # 풍선이 아래로 처지는 정도
+    ring=(0.08, 0.065, 0.03),        # 입가에 뭉친 껌 고리 (가로, 세로, 굵기)
 )
 
 # kkebook 머리 형태 (kkebook_character.py와 같은 값). 비니가 머리 곡면에 붙도록 맞출 때 사용
@@ -127,6 +161,19 @@ def head_surface_z(x, y, z_top=3.5, z_bottom=1.9):
         if head_sdf((x, y, m)) < 0: lo = m
         else: hi = m
     return lo
+
+def head_front(x, z):
+    """얼굴 정면 (x, z) 위치의 머리 표면 점과 바깥 법선 (머리 중심에서 -Y로 나가며 찾음)"""
+    lo, hi = 0.0, -2.5               # lo는 머리 안, hi는 머리 밖
+    for _ in range(50):
+        m = 0.5*(lo+hi)
+        if head_sdf((x, m, z)) < 0: lo = m
+        else: hi = m
+    p = (x, lo, z); e = 1e-4
+    g = (head_sdf((x+e, lo, z)) - head_sdf((x-e, lo, z)),
+         head_sdf((x, lo+e, z)) - head_sdf((x, lo-e, z)),
+         head_sdf((x, lo, z+e)) - head_sdf((x, lo, z-e)))
+    return p, norm(g)
 
 class MeshBuilder:
     def __init__(self):
@@ -453,7 +500,95 @@ def build_headset():
               "Acc_Cream", smooth=False)
     return m
 
-BUILDERS = {"beanie": build_beanie, "cap": build_cap, "headset": build_headset}
+# ---------------- 얼굴 악세서리 ----------------
+def _superellipse(c, s, e):
+    return math.copysign(abs(c)**e, c), math.copysign(abs(s)**e, s)
+
+def lens_outline(center, n, rx, rz, e=1.0, segs=64):
+    """렌즈 테두리 점 (닫힌 고리: 첫 점 = 마지막 점). e<1이면 둥근 사각형"""
+    x, y, _ = frame_from_normal(n)
+    pts = []
+    for i in range(segs+1):
+        a = 2*math.pi*i/segs
+        c, s_ = _superellipse(math.cos(a), math.sin(a), e)
+        pts.append(add(center, add(mul(x, rx*c), mul(y, rz*s_))))
+    return pts
+
+def place_lens(cx, cz, rx, rz, e, clearance):
+    """테가 얼굴에 파묻히지 않을 만큼 얼굴 법선 방향으로 렌즈를 띄운다"""
+    p, n = head_front(cx, cz)
+    off = 0.02
+    while off < 0.6:
+        c = add(p, mul(n, off))
+        if min(head_sdf(q) for q in lens_outline(c, n, rx, rz, e, 32)) >= clearance:
+            break
+        off += 0.01
+    return add(p, mul(n, off)), n
+
+def lens_disc(center, n, rx, rz, half_t, e=1.0, segs=64):
+    """얇은 렌즈 판 (테 안쪽을 채움)"""
+    x, y, w = frame_from_normal(n)
+    prof = [(0.0, -half_t), (0.98, -half_t), (1.0, 0.0), (0.98, half_t), (0.0, half_t)]
+    def radial(t, h):
+        if e >= 1.0: return 1.0
+        c, s_ = abs(math.cos(t)), abs(math.sin(t))
+        return 1.0/((c**(2/e) + s_**(2/e))**(e/2))
+    return lathe(prof, segs, frame=(x, y, w), center=center, sx=rx, sy=rz, radial=radial)
+
+def build_eyewear(spec, frame_mat, lens_mat, e):
+    m = MeshBuilder()
+    rx, rz = spec["lens_r"]; tr = spec["frame_r"]
+    lenses = []
+    for s_ in (-1, 1):
+        c, n = place_lens(s_*spec["lens_x"], spec["lens_z"], rx, rz, e, spec["clearance"])
+        lenses.append((c, n))
+        m.add(*tube(lens_outline(c, n, rx, rz, e), tr, tr, lambda i, n=n: n, segs=10), frame_mat)
+        m.add(*lens_disc(c, n, rx*0.97, rz*0.95, 0.008, e), lens_mat)
+    # 브리지: 두 렌즈 안쪽 끝(살짝 위)을 잇는 완만한 곡선, 얼굴에 닿지 않게 앞으로 밀어냄
+    def inner_edge(c, n, side):
+        x, y, _ = frame_from_normal(n); a = math.radians(25)
+        cc, ss = _superellipse(math.cos(a), math.sin(a), e)
+        return add(c, add(mul(x, rx*cc*side), mul(y, rz*ss)))
+    p0 = inner_edge(*lenses[0], 1); p1 = inner_edge(*lenses[1], -1)
+    mid = add(mul(add(p0, p1), 0.5), (0.0, 0.0, 0.03))
+    pts = []
+    for i in range(17):
+        t = i/16
+        q = add(add(mul(p0, (1-t)**2), mul(mid, 2*(1-t)*t)), mul(p1, t*t))
+        for _ in range(30):
+            if head_sdf(q) >= 0.04: break
+            q = add(q, (0.0, -0.01, 0.0))
+        pts.append(q)
+    m.add(*tube(pts, tr, tr, lambda i: (0, 0, 1), segs=10), frame_mat)
+    return m
+
+def build_glasses():
+    return build_eyewear(GLASSES, "Acc_Glasses_Frame", "Acc_Glass_Lens", 1.0)
+
+def build_sunglasses():
+    return build_eyewear(SUNGLASSES, "Acc_Sun_Frame", "Acc_Sun_Lens", SUNGLASSES["squareness"])
+
+def build_bubble_gum():
+    g = BUBBLE_GUM; m = MeshBuilder(); r = g["r"]
+    q, qn = head_front(0.0, g["mouth_z"])
+    d = norm(add(qn, (0.0, 0.0, -g["drop"])))              # 입에서 살짝 아래로 부푼 방향
+    c = add(q, mul(d, r*0.93))
+    m.add(*lathe([(rr, h*r) for rr, h in ellipse_profile(1.0, 36)], 72, center=c, sx=r, sy=r*0.97), "Acc_Gum")
+    # 입가에 뭉친 껌: 부드럽게 물결치는 납작한 고리
+    x, y, _ = frame_from_normal(d)
+    rc = add(q, mul(d, 0.03)); ax, ay, t = g["ring"]
+    pts = []
+    for i in range(97):
+        a = 2*math.pi*i/96; w = 1.0 + 0.06*math.sin(5*a)
+        pts.append(add(rc, add(mul(x, ax*w*math.cos(a)), mul(y, ay*w*math.sin(a)))))
+    m.add(*tube(pts, t, t*0.75, lambda i: d, segs=16), "Acc_Gum_Ring")
+    return m
+
+BUILDERS = {"beanie": build_beanie, "cap": build_cap, "headset": build_headset,
+            "glasses": build_glasses, "sunglasses": build_sunglasses, "bubble_gum": build_bubble_gum}
+# 악세서리마다 붙는 앵커 (GLB 원점)
+ANCHOR_OF = {"beanie": HEAD_ANCHOR, "cap": HEAD_ANCHOR, "headset": HEAD_ANCHOR,
+             "glasses": FACE_ANCHOR, "sunglasses": FACE_ANCHOR, "bubble_gum": FACE_ANCHOR}
 
 def hex_to_linear(hx):
     hx = hx.lstrip("#")
@@ -491,15 +626,22 @@ def run_blender():
         bsdf.inputs["Base Color"].default_value = lin
         bsdf.inputs["Roughness"].default_value = ROUGHNESS[name]
         bsdf.inputs["Metallic"].default_value = 0.0
+        if name in ALPHA:                    # 반투명 (유리알, 풍선껌)
+            bsdf.inputs["Alpha"].default_value = ALPHA[name]
+            lin = (lin[0], lin[1], lin[2], ALPHA[name])
+            if hasattr(mt, "blend_method"):
+                mt.blend_method = "BLEND"
+            if hasattr(mt, "surface_render_method"):   # Blender 4.2+
+                mt.surface_render_method = "BLENDED"
         mt.diffuse_color = lin
         mats[name] = mt
 
-    anchor_world = mul(HEAD_ANCHOR, S)
     objs = {}
     for name in BUILD:
         mb = BUILDERS[name]()
+        anchor = ANCHOR_OF[name]
         me = bpy.data.meshes.new(name)
-        me.from_pydata([mul(sub(v, HEAD_ANCHOR), S) for v in mb.verts], [], mb.faces)
+        me.from_pydata([mul(sub(v, anchor), S) for v in mb.verts], [], mb.faces)
         for mname in mb.materials:
             me.materials.append(mats[mname])
         for poly, mi, sm in zip(me.polygons, mb.mat_idx, mb.smooth):
@@ -511,7 +653,7 @@ def run_blender():
         bm.to_mesh(me); bm.free()
         me.update()
         ob = bpy.data.objects.new(name, me)
-        ob.location = anchor_world          # 캐릭터 머리 위에 얹혀 보이게 (미리보기용)
+        ob.location = mul(anchor, S)        # 캐릭터의 제자리에 얹혀 보이게 (미리보기용)
         col.objects.link(ob)
         objs[name] = ob
 
@@ -523,7 +665,7 @@ def run_blender():
             ob.select_set(True)
             bpy.context.view_layer.objects.active = ob
             keep = ob.location.copy()
-            ob.location = (0.0, 0.0, 0.0)   # GLB 원점 = 머리 앵커
+            ob.location = (0.0, 0.0, 0.0)   # GLB 원점 = 앵커
             path = os.path.join(EXPORT_DIR, f"{name}.glb")
             opts = dict(filepath=path, export_format="GLB", use_selection=True, export_yup=True, export_apply=True)
             try:

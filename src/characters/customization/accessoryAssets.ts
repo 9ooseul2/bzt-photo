@@ -9,7 +9,10 @@ import type { AccessoryId } from './types.ts'
  * 여기에 없는 악세서리는 FrogAccessories.ts의 코드로 그린 모양을 쓴다.
  * 새 GLB를 추가하면 파일을 넣고 이 목록에 ID만 추가하면 된다.
  */
-export const GLB_ACCESSORIES: ReadonlySet<AccessoryId> = new Set<AccessoryId>(['beanie', 'cap', 'headset'])
+export const GLB_ACCESSORIES: ReadonlySet<AccessoryId> = new Set<AccessoryId>([
+  'beanie', 'cap', 'headset',
+  'glasses', 'sunglasses', 'bubble_gum',
+])
 
 const loader = new GLTFLoader()
 const templates = new Map<AccessoryId, Promise<Object3D | null>>()
