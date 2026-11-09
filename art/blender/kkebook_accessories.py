@@ -1,0 +1,541 @@
+"""
+B_photoproject (bzt-photo) - kkebook 악세서리 GLB 제작 스크립트
+1차: 머리 악세서리 3종 (beanie, cap, headset)
+Blender 3.6 / 4.x 대응
+
+실행: Scripting 탭 > Text Editor > 이 파일 열기(또는 붙여넣기) > Run Script (Alt+P)
+- 'Kkebook_Accessories' 컬렉션만 지우고 새로 만듭니다. (Kkebook 캐릭터는 건드리지 않음)
+- 같은 파일에 kkebook 캐릭터가 있으면 악세서리가 머리 위 제자리에 얹혀 보입니다.
+- EXPORT_DIR에 폴더를 적으면 악세서리마다 따로 GLB로 내보냅니다.
+  예: EXPORT_DIR = "/Users/hyone/Desktop/bzt-photo/public/models/accessories"
+  파일 이름은 프로젝트 악세서리 ID와 같습니다 (beanie.glb, cap.glb, headset.glb).
+
+GLB 규칙
+- 원점 = kkebook-head-anchor (머리 윗면 정중앙). 코드에서 앵커에 붙이기만 하면 제자리에 놓입니다.
+- 크기 = kkebook과 같은 단위. 정면 = Three.js +Z (내보내기 시 자동 변환)
+"""
+import math
+import os
+
+# ============================================================
+# 1. 파라미터 - 형태 수치는 kkebook 시안 단위(높이 3.0 기준)
+# ============================================================
+S = 2.29 / 3.0                       # 시안 단위 -> 프로젝트 단위 (kkebook과 동일)
+HEAD_ANCHOR = (0.0, 0.0, 2.592)      # kkebook-head-anchor 위치 (시안 단위)
+
+EXPORT_DIR = ""                      # 비워두면 내보내기 안 함
+BUILD = ["beanie", "cap", "headset"]
+
+COLORS = {
+    "Acc_Knit_Red":   "#C94F4A",
+    "Acc_Knit_White": "#FFFDF4",
+    "Acc_Cap_Color":   "#4B4B50",
+    "Acc_Cap_Letter_Color": "#F8CF1F",
+    "Acc_Cream":      "#FFF0CB",
+    "Acc_Band":       "#E8E5DE",
+    "Acc_Gray":       "#C9C6C1",
+}
+ROUGHNESS = {
+    "Acc_Knit_Red": 0.9, "Acc_Knit_White": 0.95, "Acc_Cap_Color": 0.75, "Acc_Cap_Letter_Color": 0.6,
+    "Acc_Cream": 0.8, "Acc_Band": 0.6, "Acc_Gray": 0.55,
+}
+
+TOP = 2.60                           # 돌기 사이 윗면 높이
+
+BEANIE = dict(
+    base_z=TOP + 0.07,               # 니트 몸통이 시작되는 높이
+    radii=(0.37, 0.35, 0.44),        # 니트 몸통 (가로, 앞뒤, 높이)
+    cable_count=6,                   # 꽈배기 기둥 수 (둘레)
+    cable_twist_h=0.15,              # 꽈배기가 한 번 꼬이는 높이
+    cable_depth=0.16,                # 꽈배기 입체 깊이 (반지름 대비)
+    stitch_row_h=0.03,               # 꽈배기 가닥 위 니트 코 간격
+    cuff_radii=(0.42, 0.40),         # 흰 접단 바깥 크기
+    cuff_center_z=TOP + 0.09, cuff_half_h=0.045, cuff_thick=0.055,   # 얇은 털 접단
+    fur_depth=0.05,                  # 흰 털 요철 깊이
+    pom_z=TOP + 0.62, pom_r=0.14,    # 털공
+)
+CAP = dict(
+    # 위치와 기울기 (오른쪽 돌기를 통째로 덮고 비스듬히, 챙 아래로 눈이 살짝 보이게)
+    # 정면 가운데로 되돌리려면: crown_center=(0.0, 0.04, 2.52), yaw/roll/back 모두 0
+    crown_center=(0.72, 0.0, 2.30),
+    yaw_deg=10.0,                    # 챙 방향을 바깥(+X)으로 돌리는 각도
+    roll_deg=30.0,                   # 모자 꼭대기를 바깥으로 기울이는 각도
+    back_deg=15.0,                   # 모자 꼭대기를 뒤로 젖히는 각도
+    crown_radii=(0.48, 0.46, 0.52),  # 돌기를 통째로 덮는 크라운 (옆, 앞뒤, 높이)
+    crown_fullness=2.6,              # 2 = 반구, 클수록 꼭대기가 넓고 빵빵한 돔
+    crown_buried_depth=0.36,         # (crown_shell=0일 때만) 머리 속에 묻히는 아랫부분 깊이
+    crown_shell=0.03,                # 속이 빈 모자 두께. 0이면 아랫부분이 머리에 묻히는 통짜 모양
+    seams=6,
+    # 챙은 크라운 앞쪽 테두리에서 시작
+    brim_offset=0.41, brim_lift=0.03, brim_pitch_deg=-6.0,   # 챙 위치와 기울기 (-면 앞이 살짝 들림)
+    brim_size=(0.31, 0.40), brim_half_t=0.028,
+    button_r=0.047,
+    letter_center_h=0.37,            # 앞면 B 글자 가운데 높이 (크라운 중심에서)
+    letter_height=0.20, letter_stroke=0.025, letter_lift=0.006,
+)
+HEADSET = dict(
+    ear_center=(1.125, 0.05, 2.10), ear_normal=(0.998, 0.067, 0.02),   # 돌기 아래 잘록한 곳
+    band_a=1.22, band_b=0.92, band_half_w=0.07, band_half_d=0.117,       # 머리 위로 뜬 아치
+    cup_offset=0.10, cup_radii=(0.30, 0.30, 0.16),
+    cushion_radii=(0.25, 0.25, 0.10),
+    star_outer=0.13, star_inner=0.062, star_base=0.245, star_height=0.045,
+)
+
+# kkebook 머리 형태 (kkebook_character.py와 같은 값). 비니가 머리 곡면에 붙도록 맞출 때 사용
+KK_W = 0.88
+KK_HEAD = dict(lower_c=(0.0, 0.0, 1.65), lower_r=(1.42*KK_W, 0.98, 0.52),
+               upper_c=(0.0, 0.0, 1.97), upper_r=(1.08*KK_W, 0.90, 0.62), blend=0.48,
+               bump_x=0.86*KK_W, bump_y=0.02, bump_z=2.40, bump_r=0.39, bump_blend=0.29)
+
+# ============================================================
+# 2. 메쉬 생성 (bpy 없이 동작)
+# ============================================================
+def add(a, b): return (a[0]+b[0], a[1]+b[1], a[2]+b[2])
+def sub(a, b): return (a[0]-b[0], a[1]-b[1], a[2]-b[2])
+def mul(a, s): return (a[0]*s, a[1]*s, a[2]*s)
+def dot(a, b): return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]
+def cross(a, b): return (a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0])
+def norm(a):
+    l = math.sqrt(dot(a, a)) or 1e-9
+    return (a[0]/l, a[1]/l, a[2]/l)
+
+def _ell(p, c, r):
+    q = sub(p, c)
+    k0 = math.sqrt((q[0]/r[0])**2 + (q[1]/r[1])**2 + (q[2]/r[2])**2)
+    k1 = math.sqrt((q[0]/r[0]**2)**2 + (q[1]/r[1]**2)**2 + (q[2]/r[2]**2)**2)
+    return -min(r) if k1 < 1e-9 else k0*(k0-1.0)/k1
+
+def _smin(a, b, k):
+    h = max(k-abs(a-b), 0.0)/k
+    return min(a, b) - h*h*k*0.25
+
+def head_sdf(p):
+    h = KK_HEAD
+    d = _smin(_ell(p, h["lower_c"], h["lower_r"]), _ell(p, h["upper_c"], h["upper_r"]), h["blend"])
+    for s_ in (-1, 1):
+        c = (s_*h["bump_x"], h["bump_y"], h["bump_z"])
+        d = _smin(d, math.sqrt(dot(sub(p, c), sub(p, c))) - h["bump_r"], h["bump_blend"])
+    return d
+
+def head_surface_z(x, y, z_top=3.5, z_bottom=1.9):
+    """(x, y) 위치에서 위로부터 내려와 처음 만나는 머리 표면 높이 (z_bottom은 머리 안쪽이어야 함)"""
+    if head_sdf((x, y, z_bottom)) > 0:
+        return z_bottom
+    lo, hi = z_bottom, z_top
+    for _ in range(40):
+        m = 0.5*(lo+hi)
+        if head_sdf((x, y, m)) < 0: lo = m
+        else: hi = m
+    return lo
+
+class MeshBuilder:
+    def __init__(self):
+        self.materials, self.verts, self.faces, self.mat_idx, self.smooth = [], [], [], [], []
+    def _mat(self, name):
+        if name not in self.materials:
+            self.materials.append(name)
+        return self.materials.index(name)
+    def add(self, verts, faces, material, smooth=True):
+        o = len(self.verts); mi = self._mat(material)
+        self.verts += verts
+        for f in faces:
+            self.faces.append(tuple(i+o for i in f)); self.mat_idx.append(mi); self.smooth.append(smooth)
+
+def lathe(profile, segs, frame=None, center=(0, 0, 0), sx=1.0, sy=1.0, radial=None, hshift=None):
+    """profile: (r, h) 목록. (r,h) 평면에서 반시계 방향으로 주면 면이 바깥을 향함.
+    r=0 인 점은 극점 하나로 처리. frame=(u, v, w) 축 (기본 x, y, z). radial(theta, h) -> r 배율
+    hshift(theta, h) -> 높이 보정 (머리 곡면에 맞춰 아랫단을 내릴 때)"""
+    u, v, w = frame or ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+    verts, faces, rows = [], [], []
+    for r, h in profile:
+        if r < 1e-9:
+            rows.append([len(verts)])
+            verts.append(add(center, mul(w, h)))
+            continue
+        row = []
+        for j in range(segs):
+            t = 2*math.pi*j/segs
+            k = radial(t, h) if radial else 1.0
+            dh = hshift(t, h) if hshift else 0.0
+            p = add(add(mul(u, r*sx*k*math.cos(t)), mul(v, r*sy*k*math.sin(t))), mul(w, h + dh))
+            row.append(len(verts)); verts.append(add(center, p))
+        rows.append(row)
+    for a, b in zip(rows[:-1], rows[1:]):
+        if len(a) == 1 and len(b) == 1:
+            continue
+        if len(a) == 1:
+            faces += [(a[0], b[(j+1) % segs], b[j])[::-1] for j in range(segs)]
+        elif len(b) == 1:
+            faces += [(a[j], a[(j+1) % segs], b[0]) for j in range(segs)]
+        else:
+            faces += [(a[j], a[(j+1) % segs], b[(j+1) % segs], b[j]) for j in range(segs)]
+    return verts, faces
+
+def ellipse_profile(rz, n=24):
+    """아래 극점 -> 위 극점, 단위 반지름 (r)과 높이 (h = rz)"""
+    return [(math.sin(math.pi*i/n), -rz*math.cos(math.pi*i/n)) for i in range(n+1)]
+
+def squircle_profile(rc, hc, ar, ah, n=48, e=0.55):
+    """(r,h) 평면의 둥근 사각형 단면, 반시계 방향 (뒤집힌 도넛, 접단, 챙에 사용)"""
+    pts = []
+    for i in range(n):
+        t = 2*math.pi*i/n - math.pi/2
+        c, s = math.cos(t), math.sin(t)
+        pts.append((rc + ar*math.copysign(abs(c)**e, c), hc + ah*math.copysign(abs(s)**e, s)))
+    return pts + [pts[0]]
+
+def ring_lathe(profile, segs, **kw):
+    """닫힌 단면을 돌린 고리 (시작점과 끝점이 같은 profile). 마지막 행은 첫 행과 같은 점이므로 다시 연결"""
+    verts, faces = lathe(profile[:-1], segs, **kw)
+    n = len(profile) - 1
+    a = [(n-1)*segs + j for j in range(segs)]   # 마지막 행
+    b = list(range(segs))                       # 첫 행
+    faces += [(a[j], a[(j+1) % segs], b[(j+1) % segs], b[j]) for j in range(segs)]
+    return verts, faces
+
+def frame_from_normal(n, up=(0, 0, 1)):
+    """n을 세 번째 축으로, up 방향이 두 번째 축이 되는 오른손 좌표계 (x, y, n)"""
+    n = norm(n)
+    y = norm(sub(up, mul(n, dot(up, n))))
+    x = cross(y, n)
+    return x, y, n
+
+def tube(points, half_w, half_d, normals_fn, segs=14):
+    """points를 따라가는 타원 단면 관. normals_fn(i) -> 단면의 '바깥(w)' 방향"""
+    verts, faces = [], []
+    for i, p in enumerate(points):
+        tg = norm(sub(points[min(i+1, len(points)-1)], points[max(i-1, 0)]))
+        w = norm(normals_fn(i)); d = cross(tg, w)
+        for k in range(segs):
+            a = 2*math.pi*k/segs
+            verts.append(add(p, add(mul(w, half_w*math.cos(a)), mul(d, half_d*math.sin(a)))))
+    for i in range(len(points)-1):
+        for k in range(segs):
+            a = i*segs+k; b = i*segs+(k+1) % segs
+            faces.append((a, b, b+segs, a+segs))
+    for end, flip in ((0, False), (len(points)-1, True)):   # 끝 막기
+        c = len(verts); verts.append(points[end])
+        ring = [end*segs+k for k in range(segs)]
+        for k in range(segs):
+            f = (ring[k], ring[(k+1) % segs], c)
+            faces.append(f[::-1] if flip else f)
+    return verts, faces
+
+def star_prism(center, n, outer, inner, height, up=(0, 0, 1)):
+    x, y, n = frame_from_normal(n, up)
+    pts = []
+    for k in range(10):
+        a = math.pi/2 + k*math.pi/5
+        r = outer if k % 2 == 0 else inner
+        pts.append(add(center, add(mul(x, r*math.cos(a)), mul(y, r*math.sin(a)))))
+    top = [add(p, mul(n, height)) for p in pts]
+    verts = pts + top + [center, add(center, mul(n, height))]
+    cb, ct = 20, 21
+    faces = []
+    for k in range(10):
+        k2 = (k+1) % 10
+        faces.append((k, k2, 10+k2, 10+k))          # 옆면
+        faces.append((10+k, 10+k2, ct))             # 윗면
+        faces.append((k2, k, cb))                   # 아랫면
+    return verts, faces
+
+# ---------------- 악세서리 ----------------
+def build_beanie():
+    b = BEANIE; m = MeshBuilder()
+    rx, ry, rz = b["radii"]; z0 = b["base_z"]
+    cx, cy = b["cuff_radii"]
+    cuff_bottom = b["cuff_center_z"] - b["cuff_half_h"]
+    # 접단 아랫단을 머리 곡면까지 내린다 (앞뒤로 내려가는 머리에서 뜨지 않게). 0.02만큼 살짝 묻힘
+    drops = []
+    for i in range(360):
+        t = 2*math.pi*i/360
+        zs = head_surface_z(cx*math.cos(t), 0.02 + cy*math.sin(t))
+        drops.append(min(0.0, zs - 0.02 - cuff_bottom))
+    def drop_at(t):
+        f = (t % (2*math.pi))/(2*math.pi)*360
+        i = int(f); a = f - i
+        return drops[i % 360]*(1-a) + drops[(i+1) % 360]*a
+    # 니트 몸통: 꽈배기(케이블) 기둥 + 기둥 사이 골. 두 가닥이 번갈아 위로 올라오며 꼬인다
+    n_rows = 64
+    prof = [(0.0, -0.03), (1.0, -0.03)] + [(math.cos(math.pi/2*i/n_rows), rz*math.sin(math.pi/2*i/n_rows))
+                                          for i in range(n_rows + 1)]
+    cables, twist_h, depth, stitch_h = b["cable_count"], b["cable_twist_h"], b["cable_depth"], b["stitch_row_h"]
+    def rope(x, c, w):
+        q = (x - c)/w
+        return math.sqrt(1 - q*q) if abs(q) < 1 else 0.0          # 둥근 밧줄 단면
+    def cable_knit(t, h):
+        if h <= 0:
+            return 1.0
+        u = (cables*t/(2*math.pi)) % 1.0             # 기둥 하나 안에서의 위치 0~1
+        ph = 2*math.pi*h/twist_h
+        if 0.18 < u < 0.82:                           # 꽈배기 기둥: 두 가닥이 X자로 교차
+            x = (u - 0.5)/0.32                        # -1 ~ 1
+            ca, cb = 0.5*math.sin(ph), -0.5*math.sin(ph)
+            w = 0.52
+            ra, rb = rope(x, ca, w), rope(x, cb, w)
+            front = math.cos(ph)                      # +면 a가 위, -면 b가 위
+            ha = ra*(0.78 + 0.22*front); hb = rb*(0.78 - 0.22*front)
+            strand = max(ha, hb)
+            lean = 1 if ha >= hb else -1               # 가닥마다 비스듬한 코
+            stitch = 0.9 + 0.1*math.cos(2*math.pi*(h/stitch_h + lean*1.2*x))
+            d = 0.25 + 0.75*strand*stitch
+            d *= min(1.0, (0.82 - u)/0.03, (u - 0.18)/0.03)
+        else:                                         # 기둥 사이: 깊은 골 + 가는 겉뜨기 줄 하나
+            v = (u + 0.5) % 1.0 - 0.5
+            d = 0.05 + 0.3*math.exp(-(v/0.05)**2) * (0.85 + 0.15*math.cos(2*math.pi*h/stitch_h))
+        fade = max(0.0, 1 - (h/rz)**2.5)              # 꼭대기는 기둥이 모이니 약하게
+        return 1.0 + depth*(d - 0.4)*fade
+    # 아래쪽(접단 안쪽)은 접단과 함께 머리 곡면을 따라 내려가고, 위로 갈수록 원래 모양으로
+    dome_drop = lambda t, h: drop_at(t)*min(1.0, max(0.0, (0.2 - h)/0.16))
+    m.add(*lathe(prof, 168, center=(0, 0.02, z0), sx=rx, sy=ry, radial=cable_knit, hshift=dome_drop), "Acc_Knit_Red")
+
+    # 흰 털 접단: 얇은 띠가 같은 두께로 머리 곡면을 따라 내려감 + 보송한 털 요철
+    inner = 1 - b["cuff_thick"]/cx
+    ah = b["cuff_half_h"]
+    prof = squircle_profile((1+inner)/2, 0.0, (1-inner)/2, ah, n=24, e=0.7)
+    fd = b["fur_depth"]
+    def fur(t, h):
+        u = h/ah
+        return 1.0 + fd*0.5*(math.sin(23*t + 3.1*u)*math.sin(31*t - 2.3*u) + 0.6*math.sin(57*t + 5*u))
+    m.add(*ring_lathe(prof, 128, center=(0, 0.02, b["cuff_center_z"]), sx=cx, sy=cy,
+                      radial=fur, hshift=lambda t, h: drop_at(t)), "Acc_Knit_White")
+
+    # 털공: 더 복슬하게
+    pr = b["pom_r"]
+    def fluff(t, h):
+        u = h/pr
+        return 1.0 + 0.07*math.sin(9*t)*math.sin(11*u) + 0.05*math.cos(17*t + 7*u) + 0.03*math.sin(29*t - 13*u)
+    m.add(*lathe([(r, h*pr) for r, h in ellipse_profile(1.0, 24)], 48,
+                 center=(0, 0.02, b["pom_z"]), sx=pr, sy=pr, radial=fluff), "Acc_Knit_White")
+    return m
+
+def cap_axes():
+    """모자 좌표계: cs(옆, 바깥), cf(앞, 챙 방향), cn(위, 꼭대기 방향)"""
+    c = CAP
+    y, r, b = (math.radians(c["yaw_deg"]), math.radians(c["roll_deg"]), math.radians(c["back_deg"]))
+    z = (0.0, 0.0, 1.0)
+    cf = (math.sin(y), -math.cos(y), 0.0)
+    side = (math.cos(y), math.sin(y), 0.0)
+    cn = norm(add(mul(z, math.cos(r)), mul(side, math.sin(r))))          # 바깥으로 기울임
+    cn, cf = norm(add(mul(cn, math.cos(b)), mul(cf, -math.sin(b)))), norm(add(mul(cf, math.cos(b)), mul(cn, math.sin(b))))
+    cs = cross(cn, cf)
+    return cs, cf, cn
+
+def cap_frame():
+    c = CAP
+    cs, cf, cn = cap_axes()
+    p = math.radians(c["brim_pitch_deg"])
+    bn = norm(add(mul(cn, math.cos(p)), mul(cf, math.sin(p))))
+    bf = cross(cs, bn)
+    bc = add(add(c["crown_center"], mul(cf, c["brim_offset"])), mul(cn, c["brim_lift"]))
+    return bc, bf, cs, bn
+
+def crown_radius(h):
+    """크라운 높이 h(가운데 기준)에서의 가로 반지름 배율. 위는 빵빵한 돔, 아래는 머리 속 타원"""
+    c = CAP; rz = c["crown_radii"][2]
+    if h >= 0:
+        q = min(1.0, h/rz)
+        return (1 - q**c["crown_fullness"])**(1/c["crown_fullness"])
+    q = min(1.0, -h/c["crown_buried_depth"])
+    return math.sqrt(max(0.0, 1 - q*q))
+
+def crown_profile(n_top=40, n_bottom=12):
+    c = CAP; rz, bd = c["crown_radii"][2], c["crown_buried_depth"]
+    t = c.get("crown_shell", 0.0)
+    if t > 0:
+        # 속이 빈 모자: 안쪽 꼭대기 -> 안쪽 면 -> 둥근 테두리 -> 바깥 면 -> 바깥 꼭대기 (반시계)
+        tr = t/min(c["crown_radii"][0], c["crown_radii"][1])
+        pts = [(0.0, rz - t)]
+        for i in range(1, n_top + 1):
+            a = math.pi/2*(1 - i/n_top)
+            h = (rz - t)*math.sin(a)
+            pts.append((max(0.0, crown_radius(h*rz/(rz - t)) - tr), h))
+        pts.append((1 - tr*0.5, -t*0.45))           # 테두리 아래 둥근 부분
+        for i in range(n_top + 1):
+            a = math.pi/2*i/n_top
+            h = rz*math.sin(a)
+            pts.append((crown_radius(h), h))
+        pts[-1] = (0.0, rz)
+        return pts
+    pts = [(math.sin(math.pi/2*i/n_bottom), -bd*math.cos(math.pi/2*i/n_bottom)) for i in range(n_bottom)]
+    for i in range(n_top + 1):
+        a = math.pi/2*i/n_top
+        h = rz*math.sin(a)
+        pts.append((crown_radius(h), h))
+    pts[-1] = (0.0, rz)
+    return pts
+
+def crown_front_point(s_, h):
+    """크라운 앞면에서 모자 좌표 (옆 s_, 높이 h) 위치의 표면 점과 바깥 방향 법선"""
+    c = CAP; rx, ry, _ = c["crown_radii"]
+    cs, cf, cn = cap_axes()
+    def g(a, f, hh):                       # 모자 좌표 (옆 a, 앞 f, 높이 hh)
+        return (a/rx)**2 + (f/ry)**2 - crown_radius(hh)**2
+    f = ry*math.sqrt(max(0.0, crown_radius(h)**2 - (s_/rx)**2))
+    e = 1e-4
+    ga = g(s_+e, f, h) - g(s_-e, f, h); gf = g(s_, f+e, h) - g(s_, f-e, h); gh = g(s_, f, h+e) - g(s_, f, h-e)
+    n = norm(add(add(mul(cs, ga), mul(cf, gf)), mul(cn, gh)))
+    p = add(add(add(c["crown_center"], mul(cs, s_)), mul(cf, f)), mul(cn, h))
+    return p, n
+
+def letter_b_strokes(height):
+    """둥근 B 글자를 획(점 목록) 3개로: 세로 기둥, 위 반원, 아래 반원 (u=가로, v=세로, 가운데 정렬)"""
+    hh = height/2
+    stem_x = -0.31*height
+    x0 = stem_x + 0.20*height                   # 반원이 시작되는 곳까지 직선
+    strokes = [[(stem_x, -hh + 0.25*hh*i) for i in range(9)]]
+    def bowl(y_top, y_bot, r):
+        cy = (y_top + y_bot)/2
+        pts = [(stem_x, y_top), (x0, y_top)]
+        for i in range(1, 20):
+            a = math.pi/2 - math.pi*i/20
+            pts.append((x0 + r*math.cos(a), cy + (y_top - cy)*math.sin(a)))
+        pts += [(x0, y_bot), (stem_x, y_bot)]
+        return pts
+    strokes.append(bowl(hh, 0.0, 0.30*height))     # 위 반원 (조금 작게)
+    strokes.append(bowl(0.0, -hh, 0.36*height))    # 아래 반원 (조금 크게)
+    return strokes
+
+def build_cap():
+    c = CAP; m = MeshBuilder()
+    rx, ry, rz = c["crown_radii"]
+    seam = lambda t, h: 1.0 - 0.018*max(0.0, math.cos(c["seams"]*t))**30 if h > 0 else 1.0
+    cs, cf, cn = cap_axes()
+    m.add(*lathe(crown_profile(), 96, frame=(cs, mul(cf, -1.0), cn), center=c["crown_center"], sx=rx, sy=ry,
+                 radial=seam), "Acc_Cap_Color")
+    bc, bf, cs, bn = cap_frame()
+    ht = c["brim_half_t"]
+    # 아랫면 중심 -> 둥근 테두리 -> 윗면 중심 (반시계)
+    prof = [(0.0, -ht), (0.5, -ht)] + [(0.86 + 0.14*math.cos(a), ht*math.sin(a))
+                                        for a in [-math.pi/2 + math.pi*i/12 for i in range(13)]] + [(0.5, ht), (0.0, ht)]
+    m.add(*lathe(prof, 72, frame=(bf, cs, bn), center=bc, sx=c["brim_size"][0], sy=c["brim_size"][1]), "Acc_Cap_Color")
+    top = add(c["crown_center"], mul(cn, rz - 0.012))
+    m.add(*lathe([(r, h*c["button_r"]) for r, h in ellipse_profile(1.0, 10)], 20, frame=(cs, mul(cf, -1.0), cn), center=top,
+                 sx=c["button_r"], sy=c["button_r"]), "Acc_Cap_Color")
+    # 앞면 B: 크라운 곡면을 따라 올린 도톰한 글자
+    sr = c["letter_stroke"]
+    for stroke in letter_b_strokes(c["letter_height"]):
+        dense = []
+        for (u0, v0), (u1, v1) in zip(stroke[:-1], stroke[1:]):
+            for k in range(4):
+                f = k/4
+                dense.append((u0 + (u1-u0)*f, v0 + (v1-v0)*f))
+        dense.append(stroke[-1])
+        pts, nrm = [], []
+        for u, v in dense:
+            p, n = crown_front_point(u, c["letter_center_h"] + v)
+            pts.append(add(p, mul(n, sr*0.45 + c["letter_lift"])))
+            nrm.append(n)
+        m.add(*tube(pts, sr, sr, lambda i, nrm=nrm: nrm[i], segs=10), "Acc_Cap_Letter_Color")
+    return m
+
+def build_headset():
+    h = HEADSET; m = MeshBuilder()
+    ex, ey, ez = h["ear_center"]
+    a, bb = h["band_a"], h["band_b"]
+    phi0 = math.asin(0.1/bb)
+    pts, nrms = [], []
+    for i in range(61):
+        f = phi0 + (math.pi - 2*phi0)*i/60
+        pts.append((a*math.cos(f), ey, ez + bb*math.sin(f)))
+        nrms.append(norm((math.cos(f)/a, 0.0, math.sin(f)/bb)))
+    m.add(*tube(pts, h["band_half_w"], h["band_half_d"], lambda i: nrms[i], segs=16), "Acc_Band")
+    for s in (-1, 1):
+        n = norm((s*h["ear_normal"][0], h["ear_normal"][1], h["ear_normal"][2]))
+        c = (s*ex, ey, ez)
+        x, y, n = frame_from_normal(n)
+        cup_c = add(c, mul(n, h["cup_offset"]))
+        rx, ry, rn = h["cup_radii"]
+        m.add(*lathe([(r, hh*rn) for r, hh in ellipse_profile(1.0, 20)], 48, frame=(x, y, n), center=cup_c, sx=rx, sy=ry), "Acc_Gray")
+        rx, ry, rn = h["cushion_radii"]
+        m.add(*lathe([(r, hh*rn) for r, hh in ellipse_profile(1.0, 16)], 40, frame=(x, y, n), center=c, sx=rx, sy=ry), "Acc_Cream")
+        m.add(*star_prism(add(c, mul(n, h["star_base"])), n, h["star_outer"], h["star_inner"], h["star_height"]),
+              "Acc_Cream", smooth=False)
+    return m
+
+BUILDERS = {"beanie": build_beanie, "cap": build_cap, "headset": build_headset}
+
+def hex_to_linear(hx):
+    hx = hx.lstrip("#")
+    def c(v):
+        v = int(v, 16)/255.0
+        return v/12.92 if v <= 0.04045 else ((v+0.055)/1.055)**2.4
+    return (c(hx[0:2]), c(hx[2:4]), c(hx[4:6]), 1.0)
+
+# ============================================================
+# 3. Blender에 생성 / 내보내기 (bpy가 있을 때만)
+# ============================================================
+def run_blender():
+    import bpy
+    import bmesh
+
+    col = bpy.data.collections.get("Kkebook_Accessories")
+    if col:
+        for ob in list(col.objects):
+            data = ob.data
+            bpy.data.objects.remove(ob, do_unlink=True)
+            if data is not None and data.users == 0 and data.name in bpy.data.meshes:
+                bpy.data.meshes.remove(data)
+        bpy.data.collections.remove(col)
+    col = bpy.data.collections.new("Kkebook_Accessories")
+    bpy.context.scene.collection.children.link(col)
+
+    mats = {}
+    for name, hx in COLORS.items():
+        mt = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+        mt.use_nodes = True
+        bsdf = next((nd for nd in mt.node_tree.nodes if nd.type == "BSDF_PRINCIPLED"), None)
+        if bsdf is None:
+            bsdf = mt.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        lin = hex_to_linear(hx)
+        bsdf.inputs["Base Color"].default_value = lin
+        bsdf.inputs["Roughness"].default_value = ROUGHNESS[name]
+        bsdf.inputs["Metallic"].default_value = 0.0
+        mt.diffuse_color = lin
+        mats[name] = mt
+
+    anchor_world = mul(HEAD_ANCHOR, S)
+    objs = {}
+    for name in BUILD:
+        mb = BUILDERS[name]()
+        me = bpy.data.meshes.new(name)
+        me.from_pydata([mul(sub(v, HEAD_ANCHOR), S) for v in mb.verts], [], mb.faces)
+        for mname in mb.materials:
+            me.materials.append(mats[mname])
+        for poly, mi, sm in zip(me.polygons, mb.mat_idx, mb.smooth):
+            poly.material_index = mi
+            poly.use_smooth = sm
+        bm = bmesh.new(); bm.from_mesh(me)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(me); bm.free()
+        me.update()
+        ob = bpy.data.objects.new(name, me)
+        ob.location = anchor_world          # 캐릭터 머리 위에 얹혀 보이게 (미리보기용)
+        col.objects.link(ob)
+        objs[name] = ob
+
+    if EXPORT_DIR:
+        os.makedirs(EXPORT_DIR, exist_ok=True)
+        for name, ob in objs.items():
+            for o in bpy.context.view_layer.objects:
+                o.select_set(False)
+            ob.select_set(True)
+            bpy.context.view_layer.objects.active = ob
+            keep = ob.location.copy()
+            ob.location = (0.0, 0.0, 0.0)   # GLB 원점 = 머리 앵커
+            path = os.path.join(EXPORT_DIR, f"{name}.glb")
+            opts = dict(filepath=path, export_format="GLB", use_selection=True, export_yup=True, export_apply=True)
+            try:
+                bpy.ops.export_scene.gltf(**opts, export_cameras=False, export_lights=False)
+            except TypeError:
+                bpy.ops.export_scene.gltf(**opts)
+            ob.location = keep
+            print("Exported:", path)
+    print("kkebook accessories built:", ", ".join(BUILD))
+
+try:
+    import bpy  # noqa
+    run_blender()
+except ImportError:
+    pass

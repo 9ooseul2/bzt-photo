@@ -15,6 +15,7 @@ import { publicAsset } from '../../config/publicAsset.ts'
 import type { CharacterAnimationState, CharacterVisual } from '../CharacterVisual.ts'
 import type { VisitorCharacterConfig } from '../VisitorCharacter.ts'
 import { createAccessoryModel } from '../customization/FrogAccessories.ts'
+import { GLB_ACCESSORIES, loadAccessoryTemplate, preloadAccessoryTemplates } from '../customization/accessoryAssets.ts'
 import { FROG_COLOR_VALUES, normalizeCustomization, type AccessorySlot, type FrogCustomization } from '../customization/types.ts'
 
 /**
@@ -77,9 +78,10 @@ type AnchorKey = AccessorySlot | 'body'
 type AnchorFit = { position?: readonly [number, number, number]; scale?: number }
 
 /**
- * kkebook.glb 앵커에 기존(코드로 그린) 악세서리를 붙일 때의 보정값.
- * kkebook은 머리와 몸이 더 넓어서 일부 슬롯을 키우거나 옮긴다. 화면을 보며 조정하는 값이다.
- * position은 모델 기준 좌표로 앵커 위치를 덮어쓰고, scale은 그 슬롯의 악세서리 전체 크기 배율이다.
+ * kkebook에 아직 GLB가 없는 (코드로 그린) 악세서리를 붙일 때의 보정값.
+ * kkebook은 머리와 몸이 더 넓어서 일부 슬롯을 키우거나 옮긴다. 앵커 자체는 움직이지 않으므로
+ * GLB 악세서리에는 영향을 주지 않는다.
+ * position은 모델 기준 좌표로 그 악세서리를 놓을 위치, scale은 악세서리 크기 배율이다.
  */
 export const KKEBOOK_ACCESSORY_FIT: Readonly<Record<AnchorKey, AnchorFit>> = {
   head: {},
@@ -105,6 +107,8 @@ export interface FrogVisitorVisual extends CharacterVisual {
 
 /** Everything the animation and customization code needs, regardless of where the mesh came from. */
 interface FrogRig {
+  /** 'kkebook' = kkebook.glb, 'procedural' = 파일을 못 불러왔을 때의 기본 개구리 */
+  kind: 'kkebook' | 'procedural'
   root: Object3D
   groundOffset: number
   bodyMaterial: MeshStandardMaterial
@@ -138,6 +142,21 @@ export function preloadKkebookModel(): Promise<Object3D | null> {
 
 // Start downloading as soon as the app loads so the entry/customizer screen is ready.
 void preloadKkebookModel()
+preloadAccessoryTemplates()
+
+/** 코드로 그린 악세서리를 kkebook 크기에 맞게 옮기고 키운다 (앵커는 그대로). */
+function fitPrototypeAccessory(model: Object3D, key: AnchorKey, anchor: Object3D): Object3D {
+  const fit = KKEBOOK_ACCESSORY_FIT[key]
+  if (fit.position) {
+    model.position.set(
+      fit.position[0] - anchor.position.x,
+      fit.position[1] - anchor.position.y,
+      fit.position[2] - anchor.position.z,
+    )
+  }
+  model.scale.setScalar(fit.scale ?? 1)
+  return model
+}
 
 function createKkebookRig(template: Object3D): FrogRig | null {
   const root = template.clone(true)
@@ -176,11 +195,6 @@ function createKkebookRig(template: Object3D): FrogRig | null {
   }
 
   const anchors: Record<AnchorKey, Object3D> = { head, face, neck, body: bodyAnchor, hand }
-  for (const key of Object.keys(anchors) as AnchorKey[]) {
-    const fit = KKEBOOK_ACCESSORY_FIT[key]
-    if (fit.position) anchors[key].position.set(...fit.position)
-    anchors[key].scale.setScalar(fit.scale ?? 1)
-  }
 
   // Everything above the legs bobs together while the feet stay on the floor.
   const partsContainer = leftHip.parent ?? root
@@ -189,6 +203,7 @@ function createKkebookRig(template: Object3D): FrogRig | null {
     .map((object) => ({ object, baseY: object.position.y }))
 
   return {
+    kind: 'kkebook',
     root,
     groundOffset: 0,
     bodyMaterial,
@@ -311,6 +326,7 @@ function createProceduralRig(): FrogRig {
   })
 
   return {
+    kind: 'procedural',
     root,
     groundOffset: 0.00602,
     bodyMaterial,
@@ -341,7 +357,7 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
 
   const clearAnchor = (anchor: Object3D): void => {
     anchor.traverse((object) => {
-      if (object instanceof Mesh) object.geometry.dispose()
+      if (object instanceof Mesh && !object.userData.sharedGeometry) object.geometry.dispose()
     })
     anchor.clear()
   }
@@ -355,8 +371,27 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
       clearAnchor(anchor)
       const accessory = customization[slot]
       if (!accessory) continue
-      const targetAnchor = accessory === 'crossbody_bag' ? rig.anchors.body : anchor
-      targetAnchor.add(createAccessoryModel(accessory))
+      const anchorKey: AnchorKey = accessory === 'crossbody_bag' ? 'body' : slot
+      const targetAnchor = rig.anchors[anchorKey]
+
+      if (rig.kind === 'kkebook' && GLB_ACCESSORIES.has(accessory)) {
+        // GLB 악세서리: 자리만 먼저 잡고, 파일이 준비되면 채운다 (대부분 미리 받아져 있어 바로 채워짐)
+        const holder = new Group()
+        holder.name = `accessory-${accessory}`
+        targetAnchor.add(holder)
+        const requestedRig = rig
+        void loadAccessoryTemplate(accessory).then((template) => {
+          // 그 사이 다른 악세서리로 바꿨거나 캐릭터가 사라졌으면 무시
+          if (holder.parent !== targetAnchor || rig !== requestedRig) return
+          holder.add(template
+            ? template.clone(true)
+            : fitPrototypeAccessory(createAccessoryModel(accessory), anchorKey, targetAnchor))
+        })
+        continue
+      }
+
+      const prototype = createAccessoryModel(accessory)
+      targetAnchor.add(rig.kind === 'kkebook' ? fitPrototypeAccessory(prototype, anchorKey, targetAnchor) : prototype)
     }
   }
 
