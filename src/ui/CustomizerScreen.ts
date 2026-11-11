@@ -25,8 +25,8 @@ export class CustomizerScreen {
     this.onCancel = onCancel
     host.innerHTML = `
       <div class="customizer-screen__panel">
-        <header class="customizer-screen__header"><p>MY VISITOR</p><h1>나만의 개구리 꾸미기</h1><span>색을 고르고 좋아하는 아이템을 착용해 보세요.</span></header>
-        <div class="customizer-screen__body"><section class="customizer-inventory"></section><section class="customizer-preview"><div class="customizer-preview__canvas"></div><p>드래그하여 옆모습도 살펴보세요.</p></section></div>
+        <header class="customizer-screen__header"><p>MY VISITOR</p><h1>나만의 깨북이 꾸미기</h1><span>색을 고르고 좋아하는 아이템을 착용해 보세요.</span></header>
+        <div class="customizer-screen__body"><section class="customizer-inventory"></section><section class="customizer-preview"><div class="customizer-preview__canvas"></div><p>드래그해서 위아래, 옆모습까지 둘러보세요.</p></section></div>
         <footer class="customizer-screen__footer"><button class="customizer-reset" type="button">처음으로</button><div><button class="customizer-cancel" type="button">취소</button><button class="customizer-confirm" type="button">이 캐릭터로 입장하기</button></div></footer>
       </div>`
     this.inventoryHost = host.querySelector<HTMLElement>('.customizer-inventory')!
@@ -62,7 +62,7 @@ export class CustomizerScreen {
 
   private renderInventory(): void {
     const colors = Object.entries(FROG_COLOR_VALUES).map(([id, item]) => `
-      <button class="color-chip ${this.draft.color === id ? 'is-selected' : ''}" data-color="${id}" type="button" aria-label="${item.label}"><span style="background:${item.value}"></span><b>${item.label}</b></button>`).join('')
+      <button class="color-chip ${this.draft.color === id ? 'is-selected' : ''}" data-color="${id}" type="button" aria-label="${item.label}" title="${item.label}"><span style="background:${item.value}"></span></button>`).join('')
     const slots = ACCESSORY_SLOTS.map((slot) => {
       const cards = Object.entries(ACCESSORY_CATALOG).filter(([, item]) => item.slot === slot).map(([id, item]) => `
         <button class="inventory-card ${this.draft[slot] === id ? 'is-selected' : ''}" data-slot="${slot}" data-item="${id}" type="button"><span>${item.icon}</span><b>${item.label}</b></button>`).join('')

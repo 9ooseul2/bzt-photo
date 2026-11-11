@@ -1,4 +1,4 @@
-export const FROG_COLORS = ['green', 'pink', 'blue', 'yellow'] as const
+export const FROG_COLORS = ['green', 'yellow', 'blue', 'purple'] as const
 export type FrogColorId = (typeof FROG_COLORS)[number]
 
 export const ACCESSORY_SLOTS = ['head', 'face', 'neck', 'hand'] as const
@@ -34,9 +34,9 @@ export const ACCESSORY_CATALOG: Readonly<Record<AccessoryId, { icon: string; lab
 
 export const FROG_COLOR_VALUES: Readonly<Record<FrogColorId, { label: string; value: string }>> = {
   green: { label: '초록', value: '#b9e59a' },
-  pink: { label: '핑크', value: '#eeb5c2' },
-  blue: { label: '파랑', value: '#a9d2e6' },
   yellow: { label: '노랑', value: '#efd88a' },
+  blue: { label: '파랑', value: '#a9d2e6' },
+  purple: { label: '보라', value: '#c8b6e2' },
 }
 
 export function normalizeCustomization(value: Partial<FrogCustomization> | undefined): FrogCustomization {
