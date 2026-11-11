@@ -2,7 +2,6 @@ import {
   AmbientLight,
   CanvasTexture,
   Clock,
-  Color,
   DirectionalLight,
   Group,
   Mesh,
@@ -20,19 +19,21 @@ import type { FrogCustomization } from '../characters/customization/types.ts'
 /**
  * 미리보기 설정. 숫자만 바꿔서 느낌을 조절할 수 있다.
  * - 둥둥: lift = 떠 있는 높이, bob = 위아래로 흔들리는 폭, speed = 흔들림 속도, sway = 좌우 기울어짐(라디안)
- * - 시점: pitchMin/pitchMax = 아래에서/위에서 볼 수 있는 최대 각도(도), dragSpeed = 드래그 감도
+ * - 시점: pitch = 처음 내려다보는 각도(도), pitchMin/pitchMax = 위아래 드래그 범위(도), dragSpeed = 드래그 감도,
+ *   targetY = 카메라가 바라보는 높이 (작을수록 캐릭터가 화면 위쪽에 놓임)
+ * 배경(미니룸 벽과 바닥)은 3D가 아니라 2D 그림이다: src/assets/miniroom-bg.svg (style.css에서 깔림)
  */
-const FLOAT = { lift: 0.22, bob: 0.07, speed: 1.6, sway: 0.035 }
-const ORBIT = { distance: 5.15, targetY: 1.0, pitchMin: -50, pitchMax: 70, dragSpeed: 0.012 }
+const FLOAT = { lift: 0.3, bob: 0.07, speed: 1.6, sway: 0.035 }
+const ORBIT = { distance: 5.15, targetY: 1.05, pitch: 12, pitchMin: -25, pitchMax: 50, dragSpeed: 0.012 }
 
-/** 바닥 없이 떠 있는 캐릭터 아래에 보이는 흐릿한 그림자 */
+/** 떠 있는 캐릭터 아래 바닥에 보이는 흐릿한 그림자 */
 function createSoftShadow(): Mesh<PlaneGeometry, MeshBasicMaterial> {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 128
   const context = canvas.getContext('2d')!
   const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64)
-  gradient.addColorStop(0, 'rgba(80, 70, 55, 0.35)')
-  gradient.addColorStop(1, 'rgba(80, 70, 55, 0)')
+  gradient.addColorStop(0, 'rgba(0, 0, 0, 0.45)')
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
   context.fillStyle = gradient
   context.fillRect(0, 0, 128, 128)
   const material = new MeshBasicMaterial({ map: new CanvasTexture(canvas), transparent: true, depthWrite: false })
@@ -43,14 +44,14 @@ function createSoftShadow(): Mesh<PlaneGeometry, MeshBasicMaterial> {
 
 /** Isolated renderer for the dressing screen. It never registers exhibition controls. */
 export class FrogPreview {
-  private readonly camera = new PerspectiveCamera(34, 1, 0.1, 20)
+  private readonly camera = new PerspectiveCamera(30, 1, 0.1, 30)
   private readonly clock = new Clock()
   private readonly frog: FrogVisitorVisual
   private isDragging = false
   private lastPointerX = 0
   private lastPointerY = 0
   /** 위아래 시점 각도 (라디안). 0 = 정면, + = 위에서 내려다봄 */
-  private pitch = Math.atan2(0.05, ORBIT.distance)
+  private pitch = ORBIT.pitch * Math.PI / 180
   private elapsed = 0
   private readonly renderer: WebGLRenderer
   private readonly scene = new Scene()
@@ -64,6 +65,7 @@ export class FrogPreview {
 
   constructor(host: HTMLElement, customization: FrogCustomization) {
     this.host = host
+    // 배경은 투명: 뒤에 깔린 2D 미니룸 그림이 비쳐 보인다
     this.renderer = new WebGLRenderer({ antialias: true, alpha: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.outputColorSpace = SRGBColorSpace
@@ -72,7 +74,6 @@ export class FrogPreview {
     this.floater.add(this.frog.root)
     this.turntable.add(this.floater)
     this.turntable.scale.setScalar(FROG_PREVIEW_SCALE)
-    this.scene.background = new Color('#f4efe4')
     this.scene.add(this.turntable, this.shadow, new AmbientLight('#fff8e9', 2.2))
     const key = new DirectionalLight('#fff1d4', 2.5)
     key.position.set(3, 5, 4)
@@ -147,7 +148,7 @@ export class FrogPreview {
     this.floater.position.y = FLOAT.lift + wave * FLOAT.bob
     this.floater.rotation.z = Math.sin(this.elapsed * FLOAT.speed * 0.5) * FLOAT.sway
     // 그림자: 높이 올라갈수록 작고 옅게
-    const height = (this.floater.position.y / (FLOAT.lift + FLOAT.bob))
+    const height = this.floater.position.y / (FLOAT.lift + FLOAT.bob)
     this.shadow.scale.setScalar(1.05 - 0.2 * height)
     this.shadow.material.opacity = 1.1 - 0.5 * height
     this.frog.updateAnimation(delta, { isWalking: false, movementSpeed: 0 })
