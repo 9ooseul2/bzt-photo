@@ -1,7 +1,7 @@
 """
 B_photoproject (bzt-photo) - kkebook 악세서리 GLB 제작 스크립트
 머리 3종 (beanie, cap, headset) + 얼굴 3종 (glasses, sunglasses, bubble_gum)
-+ 목 3종 (scarf, crossbody_bag, bow_tie)
++ 목 3종 (scarf, crossbody_bag, bow_tie) + 손 3종 (balloon, americano, book)
 Blender 3.6 / 4.x 대응
 
 실행: Scripting 탭 > Text Editor > 이 파일 열기(또는 붙여넣기) > Run Script (Alt+P)
@@ -16,7 +16,8 @@ GLB 규칙
     머리 악세서리 -> kkebook-head-anchor (머리 윗면 정중앙)
     얼굴 악세서리 -> kkebook-face-anchor (눈과 입 사이, 얼굴 표면)
     목도리, 나비넥타이 -> kkebook-neck-anchor (머리와 몸 사이 중앙)
-    크로스백 -> kkebook-body-anchor (몸통 중앙)
+    크로스백, 책 -> kkebook-body-anchor (몸통 중앙. 책은 옆구리에 끼우고 웹에서 오른팔 자세를 바꿈)
+    풍선, 아메리카노 -> kkebook-hand-anchor (오른팔 끝)
 - 크기 = kkebook과 같은 단위. 정면 = Three.js +Z (내보내기 시 자동 변환)
 """
 import math
@@ -30,7 +31,7 @@ HEAD_ANCHOR = (0.0, 0.0, 2.592)      # kkebook-head-anchor 위치 (시안 단위
 FACE_ANCHOR = (0.0, -0.8857, 2.195)  # kkebook-face-anchor 위치 (시안 단위)
 
 EXPORT_DIR = ""                      # 비워두면 내보내기 안 함
-BUILD = ["scarf", "crossbody_bag", "bow_tie"]   # 다른 악세서리도 다시 만들려면 ID를 추가 (예: "beanie", "glasses")
+BUILD = ["balloon", "americano", "book"]   # 다른 악세서리도 다시 만들려면 ID를 추가 (예: "beanie", "glasses")
 
 COLORS = {
     "Acc_Knit_Red":   "#C94F4A",
@@ -51,15 +52,28 @@ COLORS = {
     "Acc_Gold":          "#D6964B",
     "Acc_Bowtie":        "#1E1E22",
     "Acc_Bowtie_Knot":   "#2B2B30",
+    "Acc_Balloon":       "#E0525A",
+    "Acc_String":        "#F2EEE6",
+    "Acc_Cup":           "#F4F7F8",
+    "Acc_Coffee":        "#3B2418",
+    "Acc_Ice":           "#EEF6FA",
+    "Acc_Straw":         "#2F8F5B",
+    "Acc_Book_Cover":    "#3E5C8A",
+    "Acc_Book_Page":     "#FFF6DF",
+    "Acc_Book_Label":    "#F8CF1F",
+    "Acc_Book_Line":     "#D8CDB4",
+    "Acc_Book_Mark":     "#C94F4A",
 }
 # 반투명 재질의 불투명도 (1 = 불투명). 여기에 있는 재질은 glTF에서 반투명(BLEND)으로 내보냄
-ALPHA = {"Acc_Glass_Lens": 0.22, "Acc_Gum": 0.82}
+ALPHA = {"Acc_Glass_Lens": 0.22, "Acc_Gum": 0.82, "Acc_Cup": 0.18, "Acc_Ice": 0.6}
 ROUGHNESS = {
     "Acc_Knit_Red": 0.9, "Acc_Knit_White": 0.95, "Acc_Cap_Color": 0.75, "Acc_Cap_Letter_Color": 0.6,
     "Acc_Cream": 0.8, "Acc_Band": 0.6, "Acc_Gray": 0.55,
     "Acc_Glasses_Frame": 0.45, "Acc_Glass_Lens": 0.05, "Acc_Sun_Frame": 0.4, "Acc_Sun_Lens": 0.12,
     "Acc_Gum": 0.18, "Acc_Gum_Ring": 0.35,
     "Acc_Strap": 0.6, "Acc_Bag": 0.75, "Acc_Gold": 0.35, "Acc_Bowtie": 0.45, "Acc_Bowtie_Knot": 0.4,
+    "Acc_Balloon": 0.2, "Acc_String": 0.8, "Acc_Cup": 0.08, "Acc_Coffee": 0.15, "Acc_Ice": 0.1, "Acc_Straw": 0.4,
+    "Acc_Book_Cover": 0.6, "Acc_Book_Page": 0.9, "Acc_Book_Label": 0.5, "Acc_Book_Line": 0.9, "Acc_Book_Mark": 0.6,
 }
 
 TOP = 2.60                           # 돌기 사이 윗면 높이
@@ -154,6 +168,32 @@ BOWTIE = dict(                       # 검정 나비넥타이 (목 끈 없음)
     knot=(0.075, 0.085, 0.065),
 )
 
+# ---- 손 악세서리 (오른팔 = 화면 오른쪽 팔 끝에 쥠) ----
+BALLOON = dict(
+    center=(1.65, -0.15, 3.05),      # 풍선 중심 (머리 옆 위)
+    r=(0.44, 0.52),                  # 풍선 크기 (가로, 세로 반지름)
+    knot=0.045,                      # 아래 매듭 크기
+    string_r=0.009,                  # 줄 굵기
+    string_bow=0.18,                 # 줄이 바깥으로 휘는 정도
+)
+AMERICANO = dict(                    # 아이스 아메리카노 (투명 컵 + 얼음 + 빨대, 로고 없음)
+    offset=(-0.04, -0.33, -0.34),    # 손 끝에서 컵 바닥 중심까지 (손이 컵 뒤쪽 옆면을 감싸 쥠)
+    height=0.72,
+    radius=(0.18, 0.25),             # 컵 바닥, 윗면 반지름
+    wall=0.01,
+    fill=0.82,                       # 커피 높이 (컵 높이 대비)
+    ice=7, ice_size=0.08,
+    straw_r=0.022, straw_out=0.24,   # 빨대 굵기, 컵 위로 나온 길이
+)
+BOOK = dict(                         # 오른쪽 옆구리에 끼운 책 (웹에서 오른팔을 이 자세로 바꿈)
+    side_theta=-0.55, side_z=0.80,   # 책이 붙는 몸통 위치 (theta 0 = 화면 오른쪽 옆, -1.57 = 정면)
+    facing=(1.0, -0.85),             # 바깥 표지가 보는 방향 (x, y): 바깥 + 앞쪽
+    forward=0.14,                    # 책을 앞으로 내미는 정도 (정면에서 속지가 보이게)
+    half=(0.30, 0.23, 0.055),        # 책 (가로, 세로, 두께)의 절반
+    board=0.014,                     # 표지 두께
+    hand_press=0.75,                 # 손이 바깥 표지를 누르는 정도 (손 반지름 대비)
+)
+
 # kkebook 머리 형태 (kkebook_character.py와 같은 값). 비니가 머리 곡면에 붙도록 맞출 때 사용
 KK_W = 0.88
 KK_HEAD = dict(lower_c=(0.0, 0.0, 1.65), lower_r=(1.42*KK_W, 0.98, 0.52),
@@ -167,6 +207,7 @@ KK_BELLY = dict(center=(0.0, -0.44, 0.78), radii=(0.58, 0.36, 0.43))
 KK_ARM = dict(shoulder=(0.72, -0.05, 1.12), hand=(1.04, -0.12, 0.80), r0=0.18, r1=0.24)
 KK_LEG = dict(hip=(0.40, 0.0, 0.60), foot=(0.42, -0.06, 0.22), r0=0.21, r1=0.25)
 NECK_ANCHOR = (0.0, 0.0, 1.30)       # kkebook-neck-anchor
+HAND_ANCHOR = (1.04, -0.12, 0.80)    # kkebook-hand-anchor (오른팔 끝, 팔과 함께 흔들림)
 BODY_ANCHOR = (0.0, 0.0, 0.95)       # kkebook-body-anchor (크로스백)
 
 # ============================================================
@@ -888,13 +929,114 @@ def build_bowtie():
                  sx=kx, sy=ky), "Acc_Bowtie_Knot")
     return m
 
+# ---------------- 손 악세서리 ----------------
+def hand_tip():
+    a = KK_ARM
+    d = norm(sub(a["hand"], a["shoulder"]))
+    return add(a["hand"], mul(d, a["r1"]*0.6)), d
+
+def build_balloon():
+    k = BALLOON; m = MeshBuilder(); rx, rz = k["r"]
+    c = k["center"]
+    # 아래가 살짝 좁은 달걀 모양
+    prof = []
+    for i in range(41):
+        t = math.pi*i/40; h = -math.cos(t)
+        prof.append((rx*math.sin(t)*(0.86 + 0.14*(h+1)/2), h*rz))
+    m.add(*lathe(prof, 48, center=c), "Acc_Balloon")
+    bottom = (c[0], c[1], c[2] - rz)
+    kn = k["knot"]
+    m.add(*lathe([(r*kn, h*kn) for r, h in ellipse_profile(1.2, 12)], 16, center=(bottom[0], bottom[1], bottom[2] - kn*0.6)),
+          "Acc_Balloon")
+    # 줄: 손 끝 -> 매듭, 바깥으로 살짝 휘고 몸/머리에 닿지 않게
+    tip, d = hand_tip()
+    start = add(tip, mul(d, -0.05))
+    end = (bottom[0], bottom[1], bottom[2] - kn*1.6)
+    mid = add(mul(add(start, end), 0.5), (k["string_bow"], 0.0, 0.0))
+    pts = []
+    for i in range(41):
+        t = i/40
+        pts.append(add(add(mul(start, (1-t)**2), mul(mid, 2*(1-t)*t)), mul(end, t*t)))
+    pts = [pts[0]] + push_out(pts[1:], lambda q: min(head_sdf(q), torso_sdf(q)), 0.03, smooth=2)
+    m.add(*tube(pts, k["string_r"], k["string_r"], lambda i: (0, -1, 0), segs=6), "Acc_String")
+    return m
+
+def build_americano():
+    k = AMERICANO; m = MeshBuilder()
+    tip, _ = hand_tip()
+    b0 = add(tip, k["offset"])                     # 컵 바닥 중심
+    H = k["height"]; rb, rt = k["radius"]; w = k["wall"]
+    rad = lambda h: rb + (rt - rb)*h/H
+    # 투명 컵 (바깥 벽 -> 테두리 -> 안쪽 벽)
+    prof = [(0.0, 0.0), (rb, 0.0), (rt, H), (rt + 0.012, H + 0.004), (rt + 0.012, H + 0.012), (rt - w, H + 0.008),
+            (rb - w, 0.015), (0.0, 0.015)]
+    m.add(*lathe(prof, 48, center=b0), "Acc_Cup")
+    # 커피
+    f = H*k["fill"]
+    m.add(*lathe([(0.0, 0.016), (rad(0.016) - w*1.2, 0.016), (rad(f) - w*1.2, f), (0.0, f)], 40, center=b0), "Acc_Coffee")
+    # 얼음 (커피 위로 살짝 떠오른 각얼음)
+    s_ = k["ice_size"]
+    for i in range(k["ice"]):
+        a = 2*math.pi*i/k["ice"] + 0.4
+        rr = (rad(f) - s_*1.3)*(0.25 if i == 0 else 0.75)
+        c = add(b0, (rr*math.cos(a), rr*math.sin(a), f - s_*0.25 + 0.02*math.sin(3*a)))
+        t = 0.5 + 0.6*i
+        X = (math.cos(t), math.sin(t), 0.15); Y = norm(cross((0.1, 0.2, 1.0), X)); X = norm(X); Z = cross(X, Y)
+        m.add(*rounded_box(c, (X, Y, Z), (s_, s_, s_*0.9), e=0.4, rings=8, segs=16), "Acc_Ice")
+    # 빨대: 컵 안에서 바깥쪽으로 살짝 기울어져 위로
+    p0 = add(b0, (-rb*0.3, 0.02, 0.03)); p1 = add(b0, (rt*0.35, -0.03, H + k["straw_out"]))
+    m.add(*tube([p0, mul(add(p0, p1), 0.5), p1], k["straw_r"], k["straw_r"], lambda i: (0, -1, 0), segs=12), "Acc_Straw")
+    return m
+
+def book_frame():
+    """책 중심과 축 (X: 가로, 뒤쪽 방향 / Y: 위 / N: 바깥 표지 방향)"""
+    k = BOOK; hx, hy, hz = k["half"]
+    n = norm((k["facing"][0], k["facing"][1], 0.0))
+    Y = (0.0, 0.0, 1.0); X = cross(Y, n)
+    p, _ = torso_point(k["side_theta"], k["side_z"])
+    c = add(add(p, mul(n, hz + 0.01)), mul(X, -k["forward"]))
+    for _ in range(60):                  # 안쪽 표지가 몸에 파묻히지 않을 때까지 바깥으로
+        pts = [add(add(add(c, mul(X, sx*hx)), mul(Y, sy*hy)), mul(n, -hz)) for sx in (-1, 0, 1) for sy in (-1, 0, 1)]
+        if min(torso_sdf(q) for q in pts) >= 0.005: break
+        c = add(c, mul(n, 0.01))
+    return c, X, Y, n
+
+def book_arm_pose():
+    """책을 낄 때 오른팔 회전 (어깨 기준 축과 각도, Blender 좌표). 웹 코드 BOOK_ARM_POSE와 같은 값"""
+    k = BOOK; a = KK_ARM
+    c, X, Y, n = book_frame()
+    target = add(add(c, mul(n, k["half"][2] + a["r1"]*k["hand_press"])), mul(X, 0.02))
+    v0 = norm(sub(a["hand"], a["shoulder"])); v1 = norm(sub(target, a["shoulder"]))
+    axis = cross(v0, v1); ang = math.atan2(math.sqrt(dot(axis, axis)), dot(v0, v1))
+    return norm(axis), ang
+
+def build_book():
+    k = BOOK; m = MeshBuilder()
+    c, X, Y, n = book_frame()
+    hx, hy, hz = k["half"]; bd = k["board"]; ax = (X, Y, n)
+    for zs in (1, -1):                   # 바깥, 안쪽 표지
+        m.add(*rounded_box(add(c, mul(n, zs*(hz - bd))), ax, (hx, hy, bd), e=0.2), "Acc_Book_Cover")
+    m.add(*rounded_box(add(c, mul(X, hx - 0.012)), ax, (0.03, hy, hz), e=0.6), "Acc_Book_Cover")   # 책등 (뒤쪽)
+    m.add(*rounded_box(add(c, mul(X, -0.012)), ax, (hx - 0.02, hy - 0.016, hz - bd*1.6), e=0.12), "Acc_Book_Page")
+    for i in range(-3, 4):               # 앞쪽 가장자리의 종이 결
+        m.add(*rounded_box(add(add(c, mul(X, -(hx - 0.017))), mul(n, i*0.009)), ax, (0.004, hy - 0.02, 0.0012),
+                           e=0.5, rings=4, segs=8), "Acc_Book_Line")
+    m.add(*rounded_box(add(add(c, mul(n, hz + 0.002)), mul(Y, hy*0.25)), ax, (hx*0.55, hy*0.16, 0.006), e=0.3),
+          "Acc_Book_Label")
+    top = add(add(c, mul(Y, hy - 0.01)), mul(X, -hx*0.25))           # 책갈피 끈
+    m.add(*tube([top, add(add(top, mul(Y, 0.07)), mul(X, -0.015)), add(add(top, mul(Y, 0.045)), mul(X, -0.08))],
+                0.008, 0.022, lambda i: n, segs=6), "Acc_Book_Mark")
+    return m
+
 BUILDERS = {"beanie": build_beanie, "cap": build_cap, "headset": build_headset,
             "glasses": build_glasses, "sunglasses": build_sunglasses, "bubble_gum": build_bubble_gum,
-            "scarf": build_scarf, "crossbody_bag": build_crossbody_bag, "bow_tie": build_bowtie}
+            "scarf": build_scarf, "crossbody_bag": build_crossbody_bag, "bow_tie": build_bowtie,
+            "balloon": build_balloon, "americano": build_americano, "book": build_book}
 # 악세서리마다 붙는 앵커 (GLB 원점)
 ANCHOR_OF = {"beanie": HEAD_ANCHOR, "cap": HEAD_ANCHOR, "headset": HEAD_ANCHOR,
              "glasses": FACE_ANCHOR, "sunglasses": FACE_ANCHOR, "bubble_gum": FACE_ANCHOR,
-             "scarf": NECK_ANCHOR, "crossbody_bag": BODY_ANCHOR, "bow_tie": NECK_ANCHOR}
+             "scarf": NECK_ANCHOR, "crossbody_bag": BODY_ANCHOR, "bow_tie": NECK_ANCHOR,
+             "balloon": HAND_ANCHOR, "americano": HAND_ANCHOR, "book": BODY_ANCHOR}
 
 def hex_to_linear(hx):
     hx = hx.lstrip("#")

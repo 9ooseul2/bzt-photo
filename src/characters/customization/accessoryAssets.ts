@@ -13,6 +13,7 @@ export const GLB_ACCESSORIES: ReadonlySet<AccessoryId> = new Set<AccessoryId>([
   'beanie', 'cap', 'headset',
   'glasses', 'sunglasses', 'bubble_gum',
   'scarf', 'crossbody_bag', 'bow_tie',
+  'balloon', 'americano', 'book',
 ])
 
 const loader = new GLTFLoader()

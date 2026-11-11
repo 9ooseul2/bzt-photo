@@ -6,6 +6,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  Quaternion,
   SphereGeometry,
   TubeGeometry,
   Vector3,
@@ -110,6 +111,16 @@ const MOUTH_FOR_ACCESSORY: Partial<Record<AccessoryId, KkebookMouth>> = {
   sunglasses: 'cat',
   bubble_gum: 'round',
 }
+
+/** 몸통 앵커(kkebook-body-anchor)에 붙는 악세서리. 나머지는 자기 슬롯 앵커에 붙는다. */
+const BODY_ANCHORED: ReadonlySet<AccessoryId> = new Set<AccessoryId>(['crossbody_bag', 'book'])
+
+/**
+ * 책을 옆구리에 낄 때의 오른팔 자세 (어깨 기준 회전).
+ * art/blender/kkebook_accessories.py의 book_arm_pose()와 같은 값 (Blender 좌표를 Three.js 좌표로 바꾼 축).
+ * 이 자세인 동안 오른팔은 걸어도 흔들리지 않는다 (책이 몸에서 떨어지지 않게).
+ */
+const BOOK_ARM_POSE = new Quaternion().setFromAxisAngle(new Vector3(-0.66352, -0.71306, -0.22646).normalize(), 0.98857)
 
 const KKEBOOK_URL = publicAsset('models/characters/kkebook.glb')
 
@@ -382,6 +393,8 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
   let gaitTime = 0
   let walkBlend = 0
   let customization = normalizeCustomization(initialCustomization)
+  /** 오른팔이 책을 끼는 자세로 고정되어 있는지 */
+  let rightArmPosed = false
 
   const clearAnchor = (anchor: Object3D): void => {
     anchor.traverse((object) => {
@@ -400,13 +413,18 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
       const mouth = rig.mouths[id]
       if (mouth) mouth.visible = id === shownMouth
     }
+    // 책을 들면 오른팔을 옆구리에 끼는 자세로 (kkebook만. 기본 개구리는 그대로)
+    rightArmPosed = rig.kind === 'kkebook' && customization.hand === 'book'
+    if (rightArmPosed) rig.rightShoulder.quaternion.copy(BOOK_ARM_POSE)
+    else rig.rightShoulder.rotation.set(0, 0, 0)
+
     clearAnchor(rig.anchors.body)
     for (const slot of ['head', 'face', 'neck', 'hand'] as const) {
       const anchor = rig.anchors[slot]
       clearAnchor(anchor)
       const accessory = customization[slot]
       if (!accessory) continue
-      const anchorKey: AnchorKey = accessory === 'crossbody_bag' ? 'body' : slot
+      const anchorKey: AnchorKey = BODY_ANCHORED.has(accessory) ? 'body' : slot
       const targetAnchor = rig.anchors[anchorKey]
 
       if (rig.kind === 'kkebook' && GLB_ACCESSORIES.has(accessory)) {
@@ -484,7 +502,7 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
       rig.leftHip.rotation.x = legSwing
       rig.rightHip.rotation.x = -legSwing
       rig.leftShoulder.rotation.x = -armSwing
-      rig.rightShoulder.rotation.x = armSwing
+      if (!rightArmPosed) rig.rightShoulder.rotation.x = armSwing
       for (const part of rig.bobParts) part.object.position.y = part.baseY + bodyBob
       // Leans onto the stepping foot for a toy-like waddle; pivots at the feet.
       rig.root.rotation.z = stride * WALK_ANIMATION.waddle * walkBlend

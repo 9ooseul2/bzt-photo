@@ -2,7 +2,6 @@ import {
   BufferGeometry,
   BoxGeometry,
   CatmullRomCurve3,
-  ConeGeometry,
   CylinderGeometry,
   ExtrudeGeometry,
   Group,
@@ -115,14 +114,11 @@ export function createAccessoryModel(id: AccessoryId): Group {
     const balloon = mesh(sphere, red); balloon.scale.set(0.16, 0.23, 0.145); balloon.position.set(0.3, 0.86, 0.2)
     const knot = mesh(sphere, gold); knot.scale.set(0.032, 0.04, 0.025); knot.position.set(0.25, 0.61, 0.18)
     group.add(string, balloon, knot)
-  } else if (id === 'fish_bun') {
-    const body = mesh(sphere, gold); body.scale.set(0.23, 0.115, 0.068); body.position.x = -0.04
-    const head = mesh(sphere, gold); head.scale.set(0.13, 0.13, 0.07); head.position.x = 0.16
-    const tail = mesh(new ConeGeometry(0.13, 0.2, 3), gold); tail.position.x = -0.31; tail.rotation.z = -Math.PI / 2
-    const topFin = mesh(new ConeGeometry(0.058, 0.13, 3), gold); topFin.position.set(-0.02, 0.13, 0); topFin.rotation.z = 0.08
-    const lowerFin = mesh(new ConeGeometry(0.042, 0.1, 3), gold); lowerFin.position.set(0.02, -0.12, 0); lowerFin.rotation.z = Math.PI + 0.12
-    const eye = mesh(sphere, dark); eye.scale.set(0.027, 0.027, 0.016); eye.position.set(0.19, 0.045, 0.07)
-    group.add(body, head, tail, topFin, lowerFin, eye)
+  } else if (id === 'americano') {
+    // Placeholder until americano.glb exists: a dark cup with a green straw.
+    const cup = mesh(new CylinderGeometry(0.12, 0.09, 0.3, 16), dark); cup.position.set(0, 0.05, 0.18)
+    const straw = mesh(new CylinderGeometry(0.012, 0.012, 0.22, 8), cream); straw.position.set(0.03, 0.26, 0.18); straw.rotation.z = -0.2
+    group.add(cup, straw)
   } else if (id === 'book') {
     const cover = mesh(new BoxGeometry(0.4, 0.285, 0.1), bookCover)
     const pages = mesh(new BoxGeometry(0.34, 0.225, 0.104), page); pages.position.z = 0.004
