@@ -2,7 +2,6 @@ import {
   BufferGeometry,
   BoxGeometry,
   CatmullRomCurve3,
-  ConeGeometry,
   CylinderGeometry,
   ExtrudeGeometry,
   Group,
@@ -26,8 +25,7 @@ const softGray = new MeshStandardMaterial({ color: '#c9c6c1', roughness: 0.76 })
 const beige = new MeshStandardMaterial({ color: '#d9c5a7', roughness: 0.82 })
 const red = new MeshStandardMaterial({ color: '#b85955', roughness: 0.76 })
 const gold = new MeshStandardMaterial({ color: '#d6964b', roughness: 0.78 })
-const blue = new MeshStandardMaterial({ color: '#86bddb', roughness: 0.72 })
-const white = new MeshStandardMaterial({ color: '#fffdf4', roughness: 0.82 })
+const bubblePink = new MeshStandardMaterial({ color: '#f4c4d6', roughness: 0.25, transparent: true, opacity: 0.82 })
 const bookCover = new MeshStandardMaterial({ color: '#6e86a2', roughness: 0.74 })
 const page = new MeshStandardMaterial({ color: '#fff6df', roughness: 0.86 })
 const dark = new MeshStandardMaterial({ color: '#3d302a', roughness: 0.82 })
@@ -79,15 +77,16 @@ export function createAccessoryModel(id: AccessoryId): Group {
     const leftArm = mesh(new BoxGeometry(0.15, 0.018, 0.018), brown); leftArm.position.set(-0.38, 0.02, -0.05); leftArm.rotation.y = 0.35
     const rightArm = leftArm.clone(); rightArm.position.x *= -1; rightArm.rotation.y *= -1
     group.add(left, right, bridge, leftArm, rightArm)
-  } else if (id === 'lollipop') {
-    const candy = mesh(sphere, pink); candy.scale.set(0.13, 0.13, 0.045); candy.position.set(0.22, -0.06, 0.035)
-    const swirl = mesh(new TorusGeometry(0.075, 0.013, 6, 16), cream); swirl.position.set(0.22, -0.06, 0.08)
-    const stick = mesh(new CylinderGeometry(0.014, 0.014, 0.32, 8), white); stick.position.set(0.11, -0.18, 0.01); stick.rotation.z = 0.55
-    group.add(candy, swirl, stick)
-  } else if (id === 'teardrop') {
-    const drop = mesh(sphere, blue); drop.scale.set(0.055, 0.085, 0.026); drop.position.set(0.25, -0.19, 0.025)
-    const tip = mesh(new ConeGeometry(0.055, 0.1, 12), blue); tip.position.set(0.25, -0.27, 0.025); tip.rotation.z = Math.PI
-    group.add(drop, tip)
+  } else if (id === 'sunglasses') {
+    // Placeholder until sunglasses.glb exists: two narrow dark lenses and a bridge.
+    const left = mesh(new BoxGeometry(0.26, 0.11, 0.03), charcoal); left.position.set(-0.24, 0.03, 0.02)
+    const right = left.clone(); right.position.x *= -1
+    const bridge = mesh(new BoxGeometry(0.2, 0.018, 0.018), charcoal); bridge.position.y = 0.06
+    group.add(left, right, bridge)
+  } else if (id === 'bubble_gum') {
+    // Placeholder until bubble_gum.glb exists: a translucent pink bubble in front of the mouth.
+    const bubble = mesh(sphere, bubblePink); bubble.scale.setScalar(0.18); bubble.position.set(0, -0.2, 0.16)
+    group.add(bubble)
   } else if (id === 'scarf') {
     const band = createNeckBand(pink)
     const tail = mesh(new BoxGeometry(0.15, 0.4, 0.06), pink); tail.position.set(0.16, -0.25, 0.43); tail.rotation.z = -0.18
@@ -104,7 +103,7 @@ export function createAccessoryModel(id: AccessoryId): Group {
     const bagFlap = mesh(new BoxGeometry(0.34, 0.115, 0.03), cream); bagFlap.name = 'bag-flap'; bagFlap.position.set(0.38, -0.19, 0.615)
     const clasp = mesh(sphere, gold); clasp.name = 'clasp'; clasp.scale.set(0.035, 0.035, 0.02); clasp.position.set(0.38, -0.225, 0.637)
     group.add(frontStrap, backStrap, shoulderStrap, bagBody, bagFlap, clasp)
-  } else if (id === 'ribbon') {
+  } else if (id === 'bow_tie') {
     const band = createNeckBand(cream)
     const center = mesh(sphere, gold); center.scale.set(0.07, 0.07, 0.048); center.position.z = 0.45
     const left = mesh(sphere, red); left.scale.set(0.16, 0.1, 0.05); left.position.set(-0.14, 0, 0.45)
@@ -115,14 +114,11 @@ export function createAccessoryModel(id: AccessoryId): Group {
     const balloon = mesh(sphere, red); balloon.scale.set(0.16, 0.23, 0.145); balloon.position.set(0.3, 0.86, 0.2)
     const knot = mesh(sphere, gold); knot.scale.set(0.032, 0.04, 0.025); knot.position.set(0.25, 0.61, 0.18)
     group.add(string, balloon, knot)
-  } else if (id === 'fish_bun') {
-    const body = mesh(sphere, gold); body.scale.set(0.23, 0.115, 0.068); body.position.x = -0.04
-    const head = mesh(sphere, gold); head.scale.set(0.13, 0.13, 0.07); head.position.x = 0.16
-    const tail = mesh(new ConeGeometry(0.13, 0.2, 3), gold); tail.position.x = -0.31; tail.rotation.z = -Math.PI / 2
-    const topFin = mesh(new ConeGeometry(0.058, 0.13, 3), gold); topFin.position.set(-0.02, 0.13, 0); topFin.rotation.z = 0.08
-    const lowerFin = mesh(new ConeGeometry(0.042, 0.1, 3), gold); lowerFin.position.set(0.02, -0.12, 0); lowerFin.rotation.z = Math.PI + 0.12
-    const eye = mesh(sphere, dark); eye.scale.set(0.027, 0.027, 0.016); eye.position.set(0.19, 0.045, 0.07)
-    group.add(body, head, tail, topFin, lowerFin, eye)
+  } else if (id === 'americano') {
+    // Placeholder until americano.glb exists: a dark cup with a green straw.
+    const cup = mesh(new CylinderGeometry(0.12, 0.09, 0.3, 16), dark); cup.position.set(0, 0.05, 0.18)
+    const straw = mesh(new CylinderGeometry(0.012, 0.012, 0.22, 8), cream); straw.position.set(0.03, 0.26, 0.18); straw.rotation.z = -0.2
+    group.add(cup, straw)
   } else if (id === 'book') {
     const cover = mesh(new BoxGeometry(0.4, 0.285, 0.1), bookCover)
     const pages = mesh(new BoxGeometry(0.34, 0.225, 0.104), page); pages.position.z = 0.004

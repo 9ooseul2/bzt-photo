@@ -3,7 +3,7 @@ export type FrogColorId = (typeof FROG_COLORS)[number]
 
 export const ACCESSORY_SLOTS = ['head', 'face', 'neck', 'hand'] as const
 export type AccessorySlot = (typeof ACCESSORY_SLOTS)[number]
-export type AccessoryId = 'beanie' | 'headset' | 'cap' | 'glasses' | 'lollipop' | 'teardrop' | 'scarf' | 'crossbody_bag' | 'ribbon' | 'balloon' | 'fish_bun' | 'book'
+export type AccessoryId = 'beanie' | 'headset' | 'cap' | 'glasses' | 'sunglasses' | 'bubble_gum' | 'scarf' | 'crossbody_bag' | 'bow_tie' | 'balloon' | 'americano' | 'book'
 
 export interface FrogCustomization {
   color: FrogColorId
@@ -22,13 +22,13 @@ export const ACCESSORY_CATALOG: Readonly<Record<AccessoryId, { icon: string; lab
   headset: { slot: 'head', label: '헤드셋', icon: '🎧' },
   cap: { slot: 'head', label: '캡모자', icon: '🧢' },
   glasses: { slot: 'face', label: '안경', icon: '👓' },
-  lollipop: { slot: 'face', label: '막대사탕', icon: '🍭' },
-  teardrop: { slot: 'face', label: '눈물', icon: '💧' },
+  sunglasses: { slot: 'face', label: '선글라스', icon: '🕶️' },
+  bubble_gum: { slot: 'face', label: '풍선껌', icon: '🫧' },
   scarf: { slot: 'neck', label: '목도리', icon: '🧣' },
   crossbody_bag: { slot: 'neck', label: '크로스백', icon: '👜' },
-  ribbon: { slot: 'neck', label: '리본', icon: '🎀' },
+  bow_tie: { slot: 'neck', label: '나비넥타이', icon: '🎀' },
   balloon: { slot: 'hand', label: '풍선', icon: '🎈' },
-  fish_bun: { slot: 'hand', label: '붕어빵', icon: '🐟' },
+  americano: { slot: 'hand', label: '아메리카노', icon: '🥤' },
   book: { slot: 'hand', label: '책', icon: '📕' },
 }
 
