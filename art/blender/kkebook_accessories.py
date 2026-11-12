@@ -36,8 +36,8 @@ BUILD = ["balloon", "americano", "book"]   # 다른 악세서리도 다시 만�
 COLORS = {
     "Acc_Knit_Red":   "#C94F4A",
     "Acc_Knit_White": "#FFFDF4",
-    "Acc_Cap_Color":   "#4B4B50",
-    "Acc_Cap_Letter_Color": "#F8CF1F",
+    "Acc_Cap_Color":   "#0B57FF",
+    "Acc_Cap_Letter_Color": "#FF7900",
     "Acc_Cream":      "#FFF0CB",
     "Acc_Band":       "#E8E5DE",
     "Acc_Gray":       "#C9C6C1",
