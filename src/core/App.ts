@@ -8,8 +8,8 @@ import { ViewingGuide } from '../ui/ViewingGuide.ts'
 import { GuestbookUi } from '../ui/GuestbookUi.ts'
 import { EmotionStateStore } from '../user/EmotionState.ts'
 import { VisitorSession } from '../user/VisitorSession.ts'
-import { GuestbookRepository } from '../guestbook/GuestbookRepository.ts'
-import { assignGuestbookPlacements, getFirstAvailablePlacement } from '../guestbook/GuestbookPlacement.ts'
+import { GuestbookRepository, GuestbookSaveFailure, type GuestbookSaveError } from '../guestbook/GuestbookRepository.ts'
+import { assignGuestbookPlacements, getFirstAvailablePlacement, GUESTBOOK_CAPACITY } from '../guestbook/GuestbookPlacement.ts'
 import { SAMPLE_GUESTBOOK_ENTRIES } from '../guestbook/sampleEntries.ts'
 import type { GuestbookColor, GuestbookEntry } from '../guestbook/types.ts'
 import { FrogCustomizationStore } from '../characters/customization/FrogCustomizationStore.ts'
@@ -25,6 +25,14 @@ import type { PortalConfig } from '../scenes/portals/types.ts'
 import { NullOccupancyProvider } from '../services/occupancy.ts'
 
 /** Coordinates the page shell and the active 3D exhibition scene. */
+/** 방명록 저장 실패 시 안내 문구 */
+const GUESTBOOK_SAVE_MESSAGES: Readonly<Record<GuestbookSaveError, string>> = {
+  'too-fast': '방명록은 30초에 한 번 남길 수 있어요. 잠시 후 다시 시도해 주세요.',
+  busy: '지금 방명록이 붐벼요. 잠시 후 다시 시도해 주세요.',
+  invalid: '내용을 확인해 주세요. (메시지 200자 이내)',
+  network: '방명록을 저장하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.',
+}
+
 export class App {
   private readonly canvasHost: HTMLDivElement
   private readonly customizer: CustomizerScreen
@@ -36,6 +44,8 @@ export class App {
   private readonly emotionState = new EmotionStateStore()
   private readonly artworkViewer: ArtworkViewer
   private readonly guestbookRepository = new GuestbookRepository()
+  /** 지금 방명록 방 벽에 붙어 있는 글 (자리 계산용) */
+  private guestbookEntries: GuestbookEntry[] = []
   private readonly giftShopCard: GiftShopCard
   private readonly guestbookUi: GuestbookUi
   private readonly helpButton: HTMLButtonElement
@@ -191,14 +201,21 @@ export class App {
       this.helpButton.hidden = true
       this.customizeButton.hidden = true
       this.guestbookUi.close()
-      const entries = assignGuestbookPlacements([...SAMPLE_GUESTBOOK_ENTRIES, ...this.guestbookRepository.load()])
+      // 서버에서 최신 글을 불러온다. 글이 하나도 없거나 서버에 닿지 못하면 샘플 방명록을 보여준다.
+      const saved = await this.guestbookRepository.loadLatest(GUESTBOOK_CAPACITY)
+      if (saved === null) this.guestbookUi.toast('방명록을 불러오지 못했어요. 잠시 후 다시 들어와 주세요.')
+      this.guestbookEntries = saved && saved.length > 0 ? saved : [...SAMPLE_GUESTBOOK_ENTRIES]
+      const entries = assignGuestbookPlacements(this.guestbookEntries)
       this.guestbookScene = new GuestbookScene(
         this.canvasHost,
         this.session.nickname,
         this.emotionState,
         this.customizationStore.state,
         entries,
-        (entry) => this.guestbookUi.showRead(entry),
+        (entry) => this.guestbookUi.showRead(
+          entry,
+          this.guestbookRepository.isMine(entry.id) ? () => this.deleteGuestbookEntry(entry.id) : undefined,
+        ),
         (action) => {
           if (action === 'return-to-gallery') void this.returnToGallery()
           if (action === 'open-gift-shop') this.giftShopCard.open()
@@ -263,29 +280,43 @@ export class App {
     return room.portals.find(predicate)?.id
   }
 
-  private createGuestbookEntry(message: string, color: GuestbookColor): boolean {
+  private async createGuestbookEntry(message: string, color: GuestbookColor): Promise<boolean> {
     if (!this.guestbookScene) return false
-    const existing = assignGuestbookPlacements([...SAMPLE_GUESTBOOK_ENTRIES, ...this.guestbookRepository.load()])
-    const placement = getFirstAvailablePlacement(existing)
+    const placement = getFirstAvailablePlacement(assignGuestbookPlacements(this.guestbookEntries))
     if (!placement) {
       this.guestbookUi.toast('현재 전시실의 포스트잇 자리가 모두 찼습니다.')
       return false
     }
-    const entry: GuestbookEntry = {
-      id: globalThis.crypto?.randomUUID?.() ?? `guestbook-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      nickname: this.session.nickname,
-      message,
-      color,
-      createdAt: new Date().toISOString(),
-      placement,
+    let saved: GuestbookEntry
+    try {
+      saved = await this.guestbookRepository.save({ nickname: this.session.nickname, message, color })
+    } catch (error) {
+      const reason: GuestbookSaveError = error instanceof GuestbookSaveFailure ? error.reason : 'network'
+      this.guestbookUi.toast(GUESTBOOK_SAVE_MESSAGES[reason])
+      return false
     }
-    this.guestbookRepository.save(entry)
+    // 샘플만 보이던 방이면 샘플을 치우지 않고 그 옆에 붙인다 (다음 입장부터는 실제 글만 보임)
+    const entry: GuestbookEntry = { ...saved, placement }
+    this.guestbookEntries = [...this.guestbookEntries, entry]
+    if (!this.guestbookScene) return true
     const wasAdded = this.guestbookScene.addEntry(entry)
     if (wasAdded) {
       this.guestbookScene.revealEntry(entry)
       this.guestbookUi.toast('방명록이 벽에 붙었어요.')
     }
-    return wasAdded
+    return true
+  }
+
+  private async deleteGuestbookEntry(entryId: string): Promise<boolean> {
+    const deleted = await this.guestbookRepository.delete(entryId)
+    if (!deleted) {
+      this.guestbookUi.toast('방명록을 지우지 못했어요. 잠시 후 다시 시도해 주세요.')
+      return false
+    }
+    this.guestbookEntries = this.guestbookEntries.filter((entry) => entry.id !== entryId)
+    this.guestbookScene?.removeEntry(entryId)
+    this.guestbookUi.toast('방명록을 지웠어요.')
+    return true
   }
 
   private async withTransition(task: () => Promise<void> | void): Promise<void> {
