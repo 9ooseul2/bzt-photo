@@ -12,7 +12,7 @@ interface GuestbookUiCallbacks {
   onEnter: () => void
   onLeave: () => void
   onModalVisibility: (isVisible: boolean) => void
-  onSubmit: (message: string, color: GuestbookColor) => boolean
+  onSubmit: (message: string, color: GuestbookColor) => Promise<boolean>
 }
 
 /** DOM-only guestbook controls and modals, intentionally separate from Three.js scenes. */
@@ -44,7 +44,11 @@ export class GuestbookUi {
     this.elements.writeButton.hidden = false
   }
 
-  showRead(entry: GuestbookEntry): void {
+  /**
+   * 포스트잇 읽기 창. onDelete를 넘기면(내가 쓴 글) 삭제 버튼이 보인다.
+   * 실수로 지우지 않도록 한 번 누르면 "정말 지울까요?"로 바뀌고, 한 번 더 눌러야 지워진다.
+   */
+  showRead(entry: GuestbookEntry, onDelete?: () => Promise<boolean>): void {
     this.openModal()
     const color = this.getColor(entry.color)
     this.elements.modalHost.innerHTML = `
@@ -54,11 +58,36 @@ export class GuestbookUi {
         <p class="guestbook-note__name" id="guestbook-read-title"></p>
         <p class="guestbook-note__message"></p>
         <time class="guestbook-note__date"></time>
+        ${onDelete ? '<button class="guestbook-note__delete" type="button">내 글 삭제</button>' : ''}
       </article>`
     this.elements.modalHost.querySelector<HTMLElement>('.guestbook-note__name')!.textContent = entry.nickname
     this.elements.modalHost.querySelector<HTMLElement>('.guestbook-note__message')!.textContent = entry.message
     const date = new Date(entry.createdAt)
     this.elements.modalHost.querySelector<HTMLTimeElement>('.guestbook-note__date')!.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR')
+    const deleteButton = this.elements.modalHost.querySelector<HTMLButtonElement>('.guestbook-note__delete')
+    if (deleteButton && onDelete) {
+      let armed = false
+      deleteButton.addEventListener('click', () => {
+        if (!armed) {
+          armed = true
+          deleteButton.textContent = '정말 지울까요? 한 번 더 누르면 삭제돼요'
+          deleteButton.classList.add('is-armed')
+          return
+        }
+        deleteButton.disabled = true
+        deleteButton.textContent = '지우는 중...'
+        void onDelete().then((ok) => {
+          if (ok) {
+            this.close()
+            return
+          }
+          deleteButton.disabled = false
+          armed = false
+          deleteButton.classList.remove('is-armed')
+          deleteButton.textContent = '내 글 삭제'
+        })
+      })
+    }
     this.bindClose()
   }
 
@@ -93,8 +122,10 @@ export class GuestbookUi {
       if (!message || !this.isColor(color)) return
       const button = this.elements.modalHost.querySelector<HTMLButtonElement>('.guestbook-note__submit')!
       button.disabled = true
-      if (this.callbacks.onSubmit(message, color)) this.close()
-      else button.disabled = false
+      void this.callbacks.onSubmit(message, color).then((ok) => {
+        if (ok) this.close()
+        else button.disabled = false
+      })
     })
     this.bindClose()
     window.requestAnimationFrame(() => textarea.focus())

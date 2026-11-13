@@ -122,6 +122,10 @@ export class GuestbookScene {
     return this.postits.add(entry)
   }
 
+  removeEntry(entryId: string): boolean {
+    return this.postits.remove(entryId)
+  }
+
   /** Draws attention to a just-created note without moving the visitor or changing zoom. */
   revealEntry(entry: GuestbookEntry): void {
     const position = this.postits.getPosition(entry.id)

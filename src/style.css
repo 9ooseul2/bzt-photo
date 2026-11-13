@@ -295,7 +295,6 @@ button {
 }
 
 .guide-dialog__close:hover {
-  background: var(--brand-paper);
   color: var(--brand-ink);
 }
 
@@ -911,17 +910,23 @@ button {
   width: 2rem;
   height: 2rem;
   border: 0;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 42%);
+  border-radius: 0.4rem;
+  padding: 0;
+  background: transparent;
   color: var(--brand-ink);
-  font-size: 1.45rem;
+  font-size: 1.8rem;
   line-height: 1;
+  opacity: 0.7;
 }
 
-.guestbook-note__close:hover { background: rgb(255 255 255 / 70%); }
+.guestbook-note__close:hover { opacity: 1; }
 .guestbook-note__name { margin: 0 2.2rem 1.7rem 0; font-size: 1.15rem; font-weight: 700; }
 .guestbook-note__message { margin: 0; white-space: pre-wrap; font-size: 1rem; line-height: 1.75; }
 .guestbook-note__date { display: block; margin-top: 2rem; color: color-mix(in srgb, var(--brand-deep) 70%, transparent); font-size: 0.8rem; }
+.guestbook-note__delete { display: block; margin: 1rem 0 0 auto; border: 0; border-radius: 0.35rem; padding: 0.4rem 0.6rem; background: transparent; color: color-mix(in srgb, var(--brand-ink) 65%, transparent); font-size: 0.78rem; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.guestbook-note__delete:hover { color: var(--brand-ink); }
+.guestbook-note__delete.is-armed { background: var(--brand-deep); color: var(--surface); text-decoration: none; }
+.guestbook-note__delete:disabled { opacity: 0.6; cursor: default; }
 .guestbook-note h2 { margin: 0 2rem 0.35rem 0; font-size: 1.25rem; }
 .guestbook-note__author { margin: 0 0 1.35rem; color: var(--ink-muted); font-size: 0.86rem; }
 .guestbook-note__label { display: block; margin-bottom: 0.45rem; font-size: 0.82rem; font-weight: 650; }

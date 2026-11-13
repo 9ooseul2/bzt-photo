@@ -56,6 +56,19 @@ export class GuestbookPostits {
     return true
   }
 
+  /** 벽에서 포스트잇 하나를 떼어낸다 (작성자가 삭제했을 때) */
+  remove(entryId: string): boolean {
+    if (!this.entries.has(entryId)) return false
+    this.removeHighlight(entryId)
+    const note = this.group.children.find((child) => child.userData.entryId === entryId)
+    if (note) {
+      if (this.hovered === note) this.hovered = undefined
+      this.group.remove(note)
+    }
+    this.entries.delete(entryId)
+    return true
+  }
+
   getEntryFromObject(object: Object3D): GuestbookEntry | undefined {
     let current: Object3D | null = object
     while (current) {
