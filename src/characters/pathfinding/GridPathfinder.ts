@@ -85,6 +85,11 @@ export class GridPathfinder {
     return this.isWalkablePoint(destination)
   }
 
+  /** Whether the visitor's body fits at this floor point: inside the room, clear of walls and props. */
+  canStandAt(point: NavigationPoint): boolean {
+    return this.isWalkablePoint(point)
+  }
+
   private findCellPath(start: GridCell, destination: GridCell): GridCell[] | undefined {
     const startKey = this.key(start)
     const destinationKey = this.key(destination)
