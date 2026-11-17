@@ -9,10 +9,13 @@ import {
   Scene,
   SRGBColorSpace,
   Vector2,
+  Vector3,
   WebGLRenderer,
 } from 'three'
 import { DestinationMarker } from '../characters/DestinationMarker.ts'
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
+import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
+import { MovementInput } from '../controls/MovementInput.ts'
 import { createFrogVisitorModel, FROG_VISITOR_CONFIG, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
 import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
 import { VisitorOverheadDisplay } from '../characters/VisitorOverheadDisplay.ts'
@@ -46,6 +49,10 @@ export class GuestbookScene {
   private readonly clock = new Clock()
   private readonly container: HTMLElement
   private readonly destinationMarker = new DestinationMarker()
+  private readonly directMovementCameraDirection = new Vector3()
+  private readonly keyboardControls: KeyboardMovementControls
+  private readonly movementInput = new MovementInput()
+  private wasDirectMoving = false
   private readonly emotionState: EmotionStateStore
   private readonly frogVisual: FrogVisitorVisual
   private interactionEnabled = true
@@ -97,6 +104,7 @@ export class GuestbookScene {
     })
     this.character.root.add(this.overheadDisplay.group)
     this.pathfinder = new GridPathfinder(this.room.navigation, this.character.collisionRadius)
+    this.character.setCollisionCheck((point) => this.pathfinder.canStandAt(point))
     this.postits = new GuestbookPostits(entries)
     this.portals = new PortalSet(GUESTBOOK_PORTALS, this.room.exteriorWalls, this.pathfinder)
     this.portalApproach = new PortalApproach(
@@ -109,6 +117,7 @@ export class GuestbookScene {
     this.createLighting()
     this.thirdPersonCamera.update(this.character.getCameraTarget(), this.room.getCameraOccluders(), this.room.getCameraBounds())
     this.registerPointerControls()
+    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
     this.resize()
     window.addEventListener('resize', this.resize)
   }
@@ -137,6 +146,7 @@ export class GuestbookScene {
   dispose(): void {
     if (this.animationFrameId !== undefined) window.cancelAnimationFrame(this.animationFrameId)
     window.removeEventListener('resize', this.resize)
+    this.keyboardControls.dispose()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
@@ -294,9 +304,40 @@ export class GuestbookScene {
     this.renderer.setSize(Math.max(clientWidth, 1), Math.max(clientHeight, 1), false)
   }
 
+  /** Turns keyboard (later joystick) input into a world direction relative to where the camera looks. */
+  private applyDirectMovementInput(): void {
+    const { forward, right } = this.interactionEnabled ? this.movementInput.axes : { forward: 0, right: 0 }
+    const isActive = forward !== 0 || right !== 0
+    if (isActive && !this.wasDirectMoving) {
+      // Walking by hand takes over from any click-started approach.
+      this.portalApproach.cancel()
+      this.destinationMarker.hide()
+    }
+    this.wasDirectMoving = isActive
+    if (!isActive) {
+      this.character.setDirectMovement(0, 0)
+      return
+    }
+
+    this.thirdPersonCamera.camera.getWorldDirection(this.directMovementCameraDirection)
+    const length = Math.hypot(this.directMovementCameraDirection.x, this.directMovementCameraDirection.z)
+    if (length < Number.EPSILON) {
+      this.character.setDirectMovement(0, 0)
+      return
+    }
+    const forwardX = this.directMovementCameraDirection.x / length
+    const forwardZ = this.directMovementCameraDirection.z / length
+    // Screen-right on the floor is the camera's forward turned a quarter clockwise: (-forwardZ, forwardX).
+    this.character.setDirectMovement(
+      forwardX * forward - forwardZ * right,
+      forwardZ * forward + forwardX * right,
+    )
+  }
+
   private readonly render = (): void => {
     const deltaSeconds = Math.min(this.clock.getDelta(), 0.05)
     const now = Date.now()
+    this.applyDirectMovementInput()
     const wasMoving = this.character.isMoving
     this.character.update(deltaSeconds)
     if (wasMoving && !this.character.isMoving) this.destinationMarker.hide()

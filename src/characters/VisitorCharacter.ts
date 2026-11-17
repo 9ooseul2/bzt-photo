@@ -3,6 +3,10 @@ import type { CharacterVisual } from './CharacterVisual.ts'
 import type { NavigationPoint } from './pathfinding/GridPathfinder.ts'
 
 const ARRIVAL_DISTANCE = 0.035
+/** Shared by click-to-move and direct walking so both feel the same. */
+const WALK_SPEED = 3.2
+/** Direct-walking input below this strength is treated as no input. */
+const DIRECT_INPUT_THRESHOLD = 0.01
 const FACING_ARRIVAL_ANGLE = (3 * Math.PI) / 180
 
 export interface VisitorCharacterConfig {
@@ -24,6 +28,8 @@ export class VisitorCharacter {
   private readonly cameraTarget = new Vector3()
   private readonly config: VisitorCharacterConfig
   private readonly direction = new Vector3()
+  private readonly directInput = new Vector3()
+  private canStandAt: ((point: NavigationPoint) => boolean) | undefined
   private readonly facingTarget = new Vector3()
   private hasFacingTarget = false
   private readonly nextTarget = new Vector3()
@@ -47,6 +53,24 @@ export class VisitorCharacter {
 
   get isMoving(): boolean {
     return this.path.length > 0
+  }
+
+  /** True while a keyboard (or, later, a joystick) is steering the visitor directly. */
+  get isDirectMoving(): boolean {
+    return this.directInput.lengthSq() > DIRECT_INPUT_THRESHOLD ** 2
+  }
+
+  /** Direct walking asks the room's navigation whether each step is free of walls and props. */
+  setCollisionCheck(canStandAt: (point: NavigationPoint) => boolean): void {
+    this.canStandAt = canStandAt
+  }
+
+  /**
+   * World-space walking direction on the floor plane. Length 0..1 scales the speed;
+   * (0, 0) stops direct walking and leaves click-to-move in charge again.
+   */
+  setDirectMovement(x: number, z: number): void {
+    this.directInput.set(x, 0, z)
   }
 
   /** True once a requested stationary turn is within a visually imperceptible 3°. */
@@ -96,6 +120,11 @@ export class VisitorCharacter {
       return
     }
 
+    if (this.isDirectMoving) {
+      this.updateDirectMovement(deltaSeconds)
+      return
+    }
+
     while (this.path.length > 0 && this.root.position.distanceTo(this.path[0]) < ARRIVAL_DISTANCE) {
       this.path.shift()
     }
@@ -124,8 +153,7 @@ export class VisitorCharacter {
     const turnBlend = 1 - Math.exp(-10 * deltaSeconds)
     this.root.rotation.y += this.shortestAngle(this.root.rotation.y, targetRotation) * turnBlend
 
-    const speed = 3.2
-    const movement = Math.min(distance, speed * deltaSeconds)
+    const movement = Math.min(distance, WALK_SPEED * deltaSeconds)
     this.root.position.addScaledVector(this.direction, movement)
     this.visual.updateAnimation(deltaSeconds, {
       isWalking: movement > 0,
@@ -135,6 +163,45 @@ export class VisitorCharacter {
 
   getCameraTarget(target = this.cameraTarget): Vector3 {
     return target.copy(this.root.position).add(new Vector3(0, this.config.cameraTargetHeight, 0))
+  }
+
+  private updateDirectMovement(deltaSeconds: number): void {
+    // Steering by hand replaces any route or turn that a click had started.
+    this.path = []
+    this.hasFacingTarget = false
+
+    const strength = Math.min(this.directInput.length(), 1)
+    this.direction.copy(this.directInput).normalize()
+    const targetRotation = Math.atan2(this.direction.x, this.direction.z)
+    const turnBlend = 1 - Math.exp(-12 * deltaSeconds)
+    this.root.rotation.y += this.shortestAngle(this.root.rotation.y, targetRotation) * turnBlend
+
+    const step = WALK_SPEED * strength * deltaSeconds
+    const position = this.root.position
+    const nextX = position.x + this.direction.x * step
+    const nextZ = position.z + this.direction.z * step
+    const startX = position.x
+    const startZ = position.z
+
+    // Try the full step, then each axis alone, so the visitor slides along a wall instead of sticking to it.
+    if (this.canMoveTo(nextX, nextZ)) {
+      position.x = nextX
+      position.z = nextZ
+    } else if (this.direction.x !== 0 && this.canMoveTo(nextX, startZ)) {
+      position.x = nextX
+    } else if (this.direction.z !== 0 && this.canMoveTo(startX, nextZ)) {
+      position.z = nextZ
+    }
+
+    const moved = Math.hypot(position.x - startX, position.z - startZ)
+    this.visual.updateAnimation(deltaSeconds, {
+      isWalking: moved > 0,
+      movementSpeed: moved / Math.max(deltaSeconds, Number.EPSILON),
+    })
+  }
+
+  private canMoveTo(x: number, z: number): boolean {
+    return this.canStandAt?.({ x, z }) ?? true
   }
 
   private shortestAngle(from: number, to: number): number {

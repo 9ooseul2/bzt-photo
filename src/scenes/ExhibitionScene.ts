@@ -13,6 +13,8 @@ import {
   WebGLRenderer,
 } from 'three'
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
+import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
+import { MovementInput } from '../controls/MovementInput.ts'
 import { createFrogVisitorModel, FROG_VISITOR_CONFIG, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
 import { DestinationMarker } from '../characters/DestinationMarker.ts'
 import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
@@ -77,6 +79,10 @@ export class ExhibitionScene {
   private readonly clock = new Clock()
   private readonly container: HTMLElement
   private readonly destinationMarker: DestinationMarker
+  private readonly directMovementCameraDirection = new Vector3()
+  private readonly keyboardControls: KeyboardMovementControls
+  private readonly movementInput = new MovementInput()
+  private wasDirectMoving = false
   private readonly frogVisual: FrogVisitorVisual
   private readonly emotionState: EmotionStateStore
   private interactionEnabled = true
@@ -152,6 +158,7 @@ export class ExhibitionScene {
     })
     this.character.root.add(this.overheadDisplay.group)
     this.pathfinder = new GridPathfinder(this.room.navigation, this.character.collisionRadius)
+    this.character.setCollisionCheck((point) => this.pathfinder.canStandAt(point))
     this.destinationMarker = new DestinationMarker()
     this.portals = new PortalSet(
       roomDefinition.portals,
@@ -208,6 +215,7 @@ export class ExhibitionScene {
       this.room.getCameraBounds(),
     )
     this.registerPointerControls()
+    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
     this.resize()
     window.addEventListener('resize', this.resize)
   }
@@ -226,6 +234,7 @@ export class ExhibitionScene {
     }
 
     window.removeEventListener('resize', this.resize)
+    this.keyboardControls.dispose()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
@@ -633,6 +642,7 @@ export class ExhibitionScene {
   private readonly render = (): void => {
     const deltaSeconds = Math.min(this.clock.getDelta(), 0.05)
     const now = Date.now()
+    this.applyDirectMovementInput()
     const wasMoving = this.character.isMoving
     this.character.update(deltaSeconds)
     if (wasMoving && !this.character.isMoving) {
@@ -659,6 +669,36 @@ export class ExhibitionScene {
     })
     this.renderer.render(this.scene, this.thirdPersonCamera.camera)
     this.animationFrameId = window.requestAnimationFrame(this.render)
+  }
+
+  /** Turns keyboard (later joystick) input into a world direction relative to where the camera looks. */
+  private applyDirectMovementInput(): void {
+    const { forward, right } = this.interactionEnabled ? this.movementInput.axes : { forward: 0, right: 0 }
+    const isActive = forward !== 0 || right !== 0
+    if (isActive && !this.wasDirectMoving) {
+      // Walking by hand takes over from any click-started approach.
+      this.cancelInteractions()
+      this.destinationMarker.hide()
+    }
+    this.wasDirectMoving = isActive
+    if (!isActive) {
+      this.character.setDirectMovement(0, 0)
+      return
+    }
+
+    this.thirdPersonCamera.camera.getWorldDirection(this.directMovementCameraDirection)
+    const length = Math.hypot(this.directMovementCameraDirection.x, this.directMovementCameraDirection.z)
+    if (length < Number.EPSILON) {
+      this.character.setDirectMovement(0, 0)
+      return
+    }
+    const forwardX = this.directMovementCameraDirection.x / length
+    const forwardZ = this.directMovementCameraDirection.z / length
+    // Screen-right on the floor is the camera's forward turned a quarter clockwise: (-forwardZ, forwardX).
+    this.character.setDirectMovement(
+      forwardX * forward - forwardZ * right,
+      forwardZ * forward + forwardX * right,
+    )
   }
 
   private updatePendingViewing(deltaSeconds: number): void {
