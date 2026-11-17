@@ -1,0 +1,480 @@
+diff --git a/src/characters/VisitorCharacter.ts b/src/characters/VisitorCharacter.ts
+index 5f5346b..7a6696e 100644
+--- a/src/characters/VisitorCharacter.ts
++++ b/src/characters/VisitorCharacter.ts
+@@ -3,6 +3,10 @@ import type { CharacterVisual } from './CharacterVisual.ts'
+ import type { NavigationPoint } from './pathfinding/GridPathfinder.ts'
+ 
+ const ARRIVAL_DISTANCE = 0.035
++/** Shared by click-to-move and direct walking so both feel the same. */
++const WALK_SPEED = 3.2
++/** Direct-walking input below this strength is treated as no input. */
++const DIRECT_INPUT_THRESHOLD = 0.01
+ const FACING_ARRIVAL_ANGLE = (3 * Math.PI) / 180
+ 
+ export interface VisitorCharacterConfig {
+@@ -24,6 +28,8 @@ export class VisitorCharacter {
+   private readonly cameraTarget = new Vector3()
+   private readonly config: VisitorCharacterConfig
+   private readonly direction = new Vector3()
++  private readonly directInput = new Vector3()
++  private canStandAt: ((point: NavigationPoint) => boolean) | undefined
+   private readonly facingTarget = new Vector3()
+   private hasFacingTarget = false
+   private readonly nextTarget = new Vector3()
+@@ -49,6 +55,24 @@ export class VisitorCharacter {
+     return this.path.length > 0
+   }
+ 
++  /** True while a keyboard (or, later, a joystick) is steering the visitor directly. */
++  get isDirectMoving(): boolean {
++    return this.directInput.lengthSq() > DIRECT_INPUT_THRESHOLD ** 2
++  }
++
++  /** Direct walking asks the room's navigation whether each step is free of walls and props. */
++  setCollisionCheck(canStandAt: (point: NavigationPoint) => boolean): void {
++    this.canStandAt = canStandAt
++  }
++
++  /**
++   * World-space walking direction on the floor plane. Length 0..1 scales the speed;
++   * (0, 0) stops direct walking and leaves click-to-move in charge again.
++   */
++  setDirectMovement(x: number, z: number): void {
++    this.directInput.set(x, 0, z)
++  }
++
+   /** True once a requested stationary turn is within a visually imperceptible 3°. */
+   get isFacingTarget(): boolean {
+     if (!this.hasFacingTarget) return true
+@@ -96,6 +120,11 @@ export class VisitorCharacter {
+       return
+     }
+ 
++    if (this.isDirectMoving) {
++      this.updateDirectMovement(deltaSeconds)
++      return
++    }
++
+     while (this.path.length > 0 && this.root.position.distanceTo(this.path[0]) < ARRIVAL_DISTANCE) {
+       this.path.shift()
+     }
+@@ -124,8 +153,7 @@ export class VisitorCharacter {
+     const turnBlend = 1 - Math.exp(-10 * deltaSeconds)
+     this.root.rotation.y += this.shortestAngle(this.root.rotation.y, targetRotation) * turnBlend
+ 
+-    const speed = 3.2
+-    const movement = Math.min(distance, speed * deltaSeconds)
++    const movement = Math.min(distance, WALK_SPEED * deltaSeconds)
+     this.root.position.addScaledVector(this.direction, movement)
+     this.visual.updateAnimation(deltaSeconds, {
+       isWalking: movement > 0,
+@@ -137,6 +165,45 @@ export class VisitorCharacter {
+     return target.copy(this.root.position).add(new Vector3(0, this.config.cameraTargetHeight, 0))
+   }
+ 
++  private updateDirectMovement(deltaSeconds: number): void {
++    // Steering by hand replaces any route or turn that a click had started.
++    this.path = []
++    this.hasFacingTarget = false
++
++    const strength = Math.min(this.directInput.length(), 1)
++    this.direction.copy(this.directInput).normalize()
++    const targetRotation = Math.atan2(this.direction.x, this.direction.z)
++    const turnBlend = 1 - Math.exp(-12 * deltaSeconds)
++    this.root.rotation.y += this.shortestAngle(this.root.rotation.y, targetRotation) * turnBlend
++
++    const step = WALK_SPEED * strength * deltaSeconds
++    const position = this.root.position
++    const nextX = position.x + this.direction.x * step
++    const nextZ = position.z + this.direction.z * step
++    const startX = position.x
++    const startZ = position.z
++
++    // Try the full step, then each axis alone, so the visitor slides along a wall instead of sticking to it.
++    if (this.canMoveTo(nextX, nextZ)) {
++      position.x = nextX
++      position.z = nextZ
++    } else if (this.direction.x !== 0 && this.canMoveTo(nextX, startZ)) {
++      position.x = nextX
++    } else if (this.direction.z !== 0 && this.canMoveTo(startX, nextZ)) {
++      position.z = nextZ
++    }
++
++    const moved = Math.hypot(position.x - startX, position.z - startZ)
++    this.visual.updateAnimation(deltaSeconds, {
++      isWalking: moved > 0,
++      movementSpeed: moved / Math.max(deltaSeconds, Number.EPSILON),
++    })
++  }
++
++  private canMoveTo(x: number, z: number): boolean {
++    return this.canStandAt?.({ x, z }) ?? true
++  }
++
+   private shortestAngle(from: number, to: number): number {
+     return Math.atan2(Math.sin(to - from), Math.cos(to - from))
+   }
+diff --git a/src/characters/pathfinding/GridPathfinder.ts b/src/characters/pathfinding/GridPathfinder.ts
+index 4a8c434..78c4b99 100644
+--- a/src/characters/pathfinding/GridPathfinder.ts
++++ b/src/characters/pathfinding/GridPathfinder.ts
+@@ -85,6 +85,11 @@ export class GridPathfinder {
+     return this.isWalkablePoint(destination)
+   }
+ 
++  /** Whether the visitor's body fits at this floor point: inside the room, clear of walls and props. */
++  canStandAt(point: NavigationPoint): boolean {
++    return this.isWalkablePoint(point)
++  }
++
+   private findCellPath(start: GridCell, destination: GridCell): GridCell[] | undefined {
+     const startKey = this.key(start)
+     const destinationKey = this.key(destination)
+diff --git a/src/controls/KeyboardMovementControls.ts b/src/controls/KeyboardMovementControls.ts
+new file mode 100644
+index 0000000..c458337
+--- /dev/null
++++ b/src/controls/KeyboardMovementControls.ts
+@@ -0,0 +1,91 @@
++import type { MovementAxes, MovementInput } from './MovementInput.ts'
++
++/** Physical key positions (event.code), so W·A·S·D work the same with a Korean keyboard layout. */
++const KEY_AXES: Readonly<Record<string, MovementAxes>> = {
++  KeyW: { forward: 1, right: 0 },
++  ArrowUp: { forward: 1, right: 0 },
++  KeyS: { forward: -1, right: 0 },
++  ArrowDown: { forward: -1, right: 0 },
++  KeyA: { forward: 0, right: -1 },
++  ArrowLeft: { forward: 0, right: -1 },
++  KeyD: { forward: 0, right: 1 },
++  ArrowRight: { forward: 0, right: 1 },
++}
++
++const SOURCE_ID = 'keyboard'
++
++/**
++ * Turns W·A·S·D and the arrow keys into walking input.
++ * Keys are ignored while someone is typing, while a menu has already used the key,
++ * and while the scene has paused visitor input behind a modal.
++ */
++export class KeyboardMovementControls {
++  private readonly input: MovementInput
++  private readonly isEnabled: () => boolean
++  private readonly pressed = new Set<string>()
++
++  constructor(input: MovementInput, isEnabled: () => boolean) {
++    this.input = input
++    this.isEnabled = isEnabled
++    window.addEventListener('keydown', this.onKeyDown)
++    window.addEventListener('keyup', this.onKeyUp)
++    window.addEventListener('blur', this.releaseAll)
++    document.addEventListener('visibilitychange', this.onVisibilityChange)
++  }
++
++  dispose(): void {
++    window.removeEventListener('keydown', this.onKeyDown)
++    window.removeEventListener('keyup', this.onKeyUp)
++    window.removeEventListener('blur', this.releaseAll)
++    document.removeEventListener('visibilitychange', this.onVisibilityChange)
++    this.releaseAll()
++  }
++
++  private readonly onKeyDown = (event: KeyboardEvent): void => {
++    if (!(event.code in KEY_AXES)) return
++    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
++    if (isTypingTarget(event.target) || !this.isEnabled()) return
++
++    // Arrow keys would otherwise try to scroll the page or move focus.
++    event.preventDefault()
++    if (this.pressed.has(event.code)) return
++    this.pressed.add(event.code)
++    this.sync()
++  }
++
++  private readonly onKeyUp = (event: KeyboardEvent): void => {
++    if (this.pressed.delete(event.code)) this.sync()
++  }
++
++  /** A key released while the window was in the background never sends keyup, so forget everything. */
++  private readonly releaseAll = (): void => {
++    if (this.pressed.size === 0) return
++    this.pressed.clear()
++    this.sync()
++  }
++
++  private readonly onVisibilityChange = (): void => {
++    if (document.visibilityState === 'hidden') this.releaseAll()
++  }
++
++  private sync(): void {
++    let forward = 0
++    let right = 0
++    for (const code of this.pressed) {
++      forward += KEY_AXES[code].forward
++      right += KEY_AXES[code].right
++    }
++    // Opposite keys cancel out; each axis stays within -1..1 even if W and ArrowUp are both held.
++    this.input.set(SOURCE_ID, { forward: clampUnit(forward), right: clampUnit(right) })
++  }
++}
++
++function clampUnit(value: number): number {
++  return Math.max(-1, Math.min(1, value))
++}
++
++function isTypingTarget(target: EventTarget | null): boolean {
++  if (!(target instanceof HTMLElement)) return false
++  if (target.isContentEditable) return true
++  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
++}
+diff --git a/src/controls/MovementInput.ts b/src/controls/MovementInput.ts
+new file mode 100644
+index 0000000..c5e4030
+--- /dev/null
++++ b/src/controls/MovementInput.ts
+@@ -0,0 +1,45 @@
++/** Camera-relative walking intent: forward is away from the camera, right is screen-right. */
++export interface MovementAxes {
++  forward: number
++  right: number
++}
++
++const IDLE_AXES: MovementAxes = { forward: 0, right: 0 }
++
++/**
++ * Collects direct-walking input from every device in one place.
++ * The keyboard writes here today; a touch joystick can write here later without touching the scenes.
++ */
++export class MovementInput {
++  private readonly sources = new Map<string, MovementAxes>()
++
++  /** Each input device owns one named slot so releasing one device never cancels another. */
++  set(source: string, axes: MovementAxes): void {
++    if (axes.forward === 0 && axes.right === 0) {
++      this.sources.delete(source)
++      return
++    }
++    this.sources.set(source, axes)
++  }
++
++  clear(): void {
++    this.sources.clear()
++  }
++
++  /** Combined input, limited to length 1 so diagonals are not faster than straight lines. */
++  get axes(): MovementAxes {
++    if (this.sources.size === 0) return IDLE_AXES
++
++    let forward = 0
++    let right = 0
++    for (const axes of this.sources.values()) {
++      forward += axes.forward
++      right += axes.right
++    }
++
++    const length = Math.hypot(forward, right)
++    if (length === 0) return IDLE_AXES
++    const scale = length > 1 ? 1 / length : 1
++    return { forward: forward * scale, right: right * scale }
++  }
++}
+diff --git a/src/scenes/ExhibitionScene.ts b/src/scenes/ExhibitionScene.ts
+index 5a2713c..f053a1a 100644
+--- a/src/scenes/ExhibitionScene.ts
++++ b/src/scenes/ExhibitionScene.ts
+@@ -13,6 +13,8 @@ import {
+   WebGLRenderer,
+ } from 'three'
+ import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
++import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
++import { MovementInput } from '../controls/MovementInput.ts'
+ import { createFrogVisitorModel, FROG_VISITOR_CONFIG, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
+ import { DestinationMarker } from '../characters/DestinationMarker.ts'
+ import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
+@@ -77,6 +79,10 @@ export class ExhibitionScene {
+   private readonly clock = new Clock()
+   private readonly container: HTMLElement
+   private readonly destinationMarker: DestinationMarker
++  private readonly directMovementCameraDirection = new Vector3()
++  private readonly keyboardControls: KeyboardMovementControls
++  private readonly movementInput = new MovementInput()
++  private wasDirectMoving = false
+   private readonly frogVisual: FrogVisitorVisual
+   private readonly emotionState: EmotionStateStore
+   private interactionEnabled = true
+@@ -152,6 +158,7 @@ export class ExhibitionScene {
+     })
+     this.character.root.add(this.overheadDisplay.group)
+     this.pathfinder = new GridPathfinder(this.room.navigation, this.character.collisionRadius)
++    this.character.setCollisionCheck((point) => this.pathfinder.canStandAt(point))
+     this.destinationMarker = new DestinationMarker()
+     this.portals = new PortalSet(
+       roomDefinition.portals,
+@@ -208,6 +215,7 @@ export class ExhibitionScene {
+       this.room.getCameraBounds(),
+     )
+     this.registerPointerControls()
++    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
+     this.resize()
+     window.addEventListener('resize', this.resize)
+   }
+@@ -226,6 +234,7 @@ export class ExhibitionScene {
+     }
+ 
+     window.removeEventListener('resize', this.resize)
++    this.keyboardControls.dispose()
+     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
+     this.canvas.removeEventListener('pointermove', this.onPointerMove)
+     this.canvas.removeEventListener('pointerup', this.onPointerUp)
+@@ -633,6 +642,7 @@ export class ExhibitionScene {
+   private readonly render = (): void => {
+     const deltaSeconds = Math.min(this.clock.getDelta(), 0.05)
+     const now = Date.now()
++    this.applyDirectMovementInput()
+     const wasMoving = this.character.isMoving
+     this.character.update(deltaSeconds)
+     if (wasMoving && !this.character.isMoving) {
+@@ -661,6 +671,36 @@ export class ExhibitionScene {
+     this.animationFrameId = window.requestAnimationFrame(this.render)
+   }
+ 
++  /** Turns keyboard (later joystick) input into a world direction relative to where the camera looks. */
++  private applyDirectMovementInput(): void {
++    const { forward, right } = this.interactionEnabled ? this.movementInput.axes : { forward: 0, right: 0 }
++    const isActive = forward !== 0 || right !== 0
++    if (isActive && !this.wasDirectMoving) {
++      // Walking by hand takes over from any click-started approach.
++      this.cancelInteractions()
++      this.destinationMarker.hide()
++    }
++    this.wasDirectMoving = isActive
++    if (!isActive) {
++      this.character.setDirectMovement(0, 0)
++      return
++    }
++
++    this.thirdPersonCamera.camera.getWorldDirection(this.directMovementCameraDirection)
++    const length = Math.hypot(this.directMovementCameraDirection.x, this.directMovementCameraDirection.z)
++    if (length < Number.EPSILON) {
++      this.character.setDirectMovement(0, 0)
++      return
++    }
++    const forwardX = this.directMovementCameraDirection.x / length
++    const forwardZ = this.directMovementCameraDirection.z / length
++    // Screen-right on the floor is the camera's forward turned a quarter clockwise: (-forwardZ, forwardX).
++    this.character.setDirectMovement(
++      forwardX * forward - forwardZ * right,
++      forwardZ * forward + forwardX * right,
++    )
++  }
++
+   private updatePendingViewing(deltaSeconds: number): void {
+     const pending = this.pendingViewing
+     if (!pending) return
+diff --git a/src/scenes/GuestbookScene.ts b/src/scenes/GuestbookScene.ts
+index 0c1b83a..0ef026b 100644
+--- a/src/scenes/GuestbookScene.ts
++++ b/src/scenes/GuestbookScene.ts
+@@ -9,10 +9,13 @@ import {
+   Scene,
+   SRGBColorSpace,
+   Vector2,
++  Vector3,
+   WebGLRenderer,
+ } from 'three'
+ import { DestinationMarker } from '../characters/DestinationMarker.ts'
+ import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
++import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
++import { MovementInput } from '../controls/MovementInput.ts'
+ import { createFrogVisitorModel, FROG_VISITOR_CONFIG, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
+ import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
+ import { VisitorOverheadDisplay } from '../characters/VisitorOverheadDisplay.ts'
+@@ -46,6 +49,10 @@ export class GuestbookScene {
+   private readonly clock = new Clock()
+   private readonly container: HTMLElement
+   private readonly destinationMarker = new DestinationMarker()
++  private readonly directMovementCameraDirection = new Vector3()
++  private readonly keyboardControls: KeyboardMovementControls
++  private readonly movementInput = new MovementInput()
++  private wasDirectMoving = false
+   private readonly emotionState: EmotionStateStore
+   private readonly frogVisual: FrogVisitorVisual
+   private interactionEnabled = true
+@@ -97,6 +104,7 @@ export class GuestbookScene {
+     })
+     this.character.root.add(this.overheadDisplay.group)
+     this.pathfinder = new GridPathfinder(this.room.navigation, this.character.collisionRadius)
++    this.character.setCollisionCheck((point) => this.pathfinder.canStandAt(point))
+     this.postits = new GuestbookPostits(entries)
+     this.portals = new PortalSet(GUESTBOOK_PORTALS, this.room.exteriorWalls, this.pathfinder)
+     this.portalApproach = new PortalApproach(
+@@ -109,6 +117,7 @@ export class GuestbookScene {
+     this.createLighting()
+     this.thirdPersonCamera.update(this.character.getCameraTarget(), this.room.getCameraOccluders(), this.room.getCameraBounds())
+     this.registerPointerControls()
++    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
+     this.resize()
+     window.addEventListener('resize', this.resize)
+   }
+@@ -137,6 +146,7 @@ export class GuestbookScene {
+   dispose(): void {
+     if (this.animationFrameId !== undefined) window.cancelAnimationFrame(this.animationFrameId)
+     window.removeEventListener('resize', this.resize)
++    this.keyboardControls.dispose()
+     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
+     this.canvas.removeEventListener('pointermove', this.onPointerMove)
+     this.canvas.removeEventListener('pointerup', this.onPointerUp)
+@@ -294,9 +304,40 @@ export class GuestbookScene {
+     this.renderer.setSize(Math.max(clientWidth, 1), Math.max(clientHeight, 1), false)
+   }
+ 
++  /** Turns keyboard (later joystick) input into a world direction relative to where the camera looks. */
++  private applyDirectMovementInput(): void {
++    const { forward, right } = this.interactionEnabled ? this.movementInput.axes : { forward: 0, right: 0 }
++    const isActive = forward !== 0 || right !== 0
++    if (isActive && !this.wasDirectMoving) {
++      // Walking by hand takes over from any click-started approach.
++      this.portalApproach.cancel()
++      this.destinationMarker.hide()
++    }
++    this.wasDirectMoving = isActive
++    if (!isActive) {
++      this.character.setDirectMovement(0, 0)
++      return
++    }
++
++    this.thirdPersonCamera.camera.getWorldDirection(this.directMovementCameraDirection)
++    const length = Math.hypot(this.directMovementCameraDirection.x, this.directMovementCameraDirection.z)
++    if (length < Number.EPSILON) {
++      this.character.setDirectMovement(0, 0)
++      return
++    }
++    const forwardX = this.directMovementCameraDirection.x / length
++    const forwardZ = this.directMovementCameraDirection.z / length
++    // Screen-right on the floor is the camera's forward turned a quarter clockwise: (-forwardZ, forwardX).
++    this.character.setDirectMovement(
++      forwardX * forward - forwardZ * right,
++      forwardZ * forward + forwardX * right,
++    )
++  }
++
+   private readonly render = (): void => {
+     const deltaSeconds = Math.min(this.clock.getDelta(), 0.05)
+     const now = Date.now()
++    this.applyDirectMovementInput()
+     const wasMoving = this.character.isMoving
+     this.character.update(deltaSeconds)
+     if (wasMoving && !this.character.isMoving) this.destinationMarker.hide()
+diff --git a/src/ui/createExhibitionShell.ts b/src/ui/createExhibitionShell.ts
+index 0408a7e..ebe0f8d 100644
+--- a/src/ui/createExhibitionShell.ts
++++ b/src/ui/createExhibitionShell.ts
+@@ -56,6 +56,7 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
+           <h2 id="guide-title">관람 안내</h2>
+           <ul class="guide-dialog__list">
+             <li>이동하고 싶은 위치의 바닥을 클릭해주세요.</li>
++            <li>키보드 방향키나 W·A·S·D 키로 직접 걸어 다닐 수도 있습니다.</li>
+             <li>마우스를 드래그하면 주변을 둘러볼 수 있습니다.</li>
+             <li>마우스 휠로 시야를 확대하거나 축소할 수 있습니다.</li>
+             <li>작품을 클릭하면 큰 화면으로 감상하실 수 있습니다.</li>
