@@ -18,6 +18,7 @@ import type { VisitorCharacterConfig } from '../VisitorCharacter.ts'
 import { createAccessoryModel } from '../customization/FrogAccessories.ts'
 import { GLB_ACCESSORIES, loadAccessoryTemplate, preloadAccessoryTemplates } from '../customization/accessoryAssets.ts'
 import {
+  ACCESSORY_CATALOG,
   FROG_COLOR_VALUES,
   normalizeCustomization,
   type AccessoryId,
@@ -81,7 +82,8 @@ export const FROG_ACCESSORY_ANCHOR_CONFIG = {
   neck: [0, 1.15, 0] as const,
 }
 
-type AnchorKey = AccessorySlot | 'body'
+/** body = 몸통(크로스백·책), leftHand = 다른 손(풍선) */
+type AnchorKey = AccessorySlot | 'body' | 'leftHand'
 type AnchorFit = { position?: readonly [number, number, number]; scale?: number }
 
 /**
@@ -97,6 +99,7 @@ export const KKEBOOK_ACCESSORY_FIT: Readonly<Record<AnchorKey, AnchorFit>> = {
   neck: { position: [0, 0.8, 0], scale: 1.22 },
   body: { scale: 1.15 },
   hand: {},
+  leftHand: {},
 }
 
 /** kkebook.glb 안의 입 3종 (kkebook-mouth-<id>). 한 번에 하나만 보인다. */
@@ -104,16 +107,19 @@ const KKEBOOK_MOUTHS = ['triangle', 'round', 'cat'] as const
 type KkebookMouth = (typeof KKEBOOK_MOUTHS)[number]
 
 /**
- * 얼굴 악세서리를 쓰면 바뀌는 입. 여기에 없으면 기본 세모 입.
- * 새 표정을 추가하려면 Blender 스크립트에 입을 만들고 KKEBOOK_MOUTHS와 여기에 이름을 넣는다.
+ * 얼굴 악세서리를 쓰면 바뀌는 입. 위에 있을수록 우선 (풍선껌 + 선글라스면 풍선껌의 동그란 입).
+ * 여기에 없으면 기본 세모 입. 새 표정을 추가하려면 Blender 스크립트에 입을 만들고
+ * KKEBOOK_MOUTHS와 여기에 이름을 넣는다.
  */
-const MOUTH_FOR_ACCESSORY: Partial<Record<AccessoryId, KkebookMouth>> = {
-  sunglasses: 'cat',
-  bubble_gum: 'round',
-}
+const MOUTH_PRIORITY: ReadonlyArray<readonly [AccessoryId, KkebookMouth]> = [
+  ['bubble_gum', 'round'],
+  ['sunglasses', 'cat'],
+]
 
-/** 몸통 앵커(kkebook-body-anchor)에 붙는 악세서리. 나머지는 자기 슬롯 앵커에 붙는다. */
+/** 몸통 앵커(kkebook-body-anchor)에 붙는 악세서리 */
 const BODY_ANCHORED: ReadonlySet<AccessoryId> = new Set<AccessoryId>(['crossbody_bag', 'book'])
+/** 다른 손(왼손)에 드는 악세서리. 오른손 위치를 좌우로 뒤집은 자리에 좌우 반전해서 붙인다. */
+const LEFT_HAND_HELD: ReadonlySet<AccessoryId> = new Set<AccessoryId>(['balloon'])
 
 /**
  * 책을 옆구리에 낄 때의 오른팔 자세 (어깨 기준 회전).
@@ -233,7 +239,12 @@ function createKkebookRig(template: Object3D): FrogRig | null {
     return null
   }
 
-  const anchors: Record<AnchorKey, Object3D> = { head, face, neck, body: bodyAnchor, hand }
+  // 다른 손 앵커: 오른손 앵커를 좌우로 뒤집은 자리에 새로 만든다 (파일에는 오른손만 있음)
+  const leftHand = new Group()
+  leftHand.name = 'kkebook-left-hand-anchor'
+  leftHand.position.set(-hand.position.x, hand.position.y, hand.position.z)
+  leftShoulder.add(leftHand)
+  const anchors: Record<AnchorKey, Object3D> = { head, face, neck, body: bodyAnchor, hand, leftHand }
   const mouths: Partial<Record<KkebookMouth, Object3D>> = {}
   for (const id of KKEBOOK_MOUTHS) {
     const mouth = find(`mouth-${id}`)
@@ -358,6 +369,9 @@ function createProceduralRig(): FrogRig {
   const bodyAnchor = makeAnchor('frog-body-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.body)
   const handAnchor = makeAnchor('frog-hand-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.hand)
   rightShoulder.add(handAnchor)
+  const leftHandAnchor = makeAnchor('frog-left-hand-anchor', FROG_ACCESSORY_ANCHOR_CONFIG.hand)
+  leftHandAnchor.position.x *= -1
+  leftShoulder.add(leftHandAnchor)
 
   root.add(
     body, belly, head, leftEyeBump, rightEyeBump, leftEye, rightEye, leftCheek, rightCheek, mouth,
@@ -380,7 +394,7 @@ function createProceduralRig(): FrogRig {
     leftShoulder,
     rightShoulder,
     bobParts: [{ object: body, baseY: 0.86 }, { object: belly, baseY: 0.82 }],
-    anchors: { head: headAnchor, face: faceAnchor, neck: neckAnchor, body: bodyAnchor, hand: handAnchor },
+    anchors: { head: headAnchor, face: faceAnchor, neck: neckAnchor, body: bodyAnchor, hand: handAnchor, leftHand: leftHandAnchor },
     mouths: {},
   }
 }
@@ -414,36 +428,37 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
 
   const applyToRig = (): void => {
     if (!rig) return
+    const worn = new Set(customization.accessories)
     rig.bodyMaterial.color.set(FROG_COLOR_VALUES[customization.color].value)
     // 얼굴 악세서리에 맞는 입만 보이게 한다 (그 입이 파일에 없으면 기본 세모 입 유지)
-    const wanted = (customization.face && MOUTH_FOR_ACCESSORY[customization.face]) || 'triangle'
+    const wanted = MOUTH_PRIORITY.find(([id]) => worn.has(id))?.[1] ?? 'triangle'
     const shownMouth = rig.mouths[wanted] ? wanted : 'triangle'
     for (const id of KKEBOOK_MOUTHS) {
       const mouth = rig.mouths[id]
       if (mouth) mouth.visible = id === shownMouth
     }
     // 책을 들면 오른팔을 옆구리에 끼는 자세로 (kkebook만. 기본 개구리는 그대로)
-    rightArmPosed = rig.kind === 'kkebook' && customization.hand === 'book'
+    rightArmPosed = rig.kind === 'kkebook' && worn.has('book')
     if (rightArmPosed) rig.rightShoulder.quaternion.copy(BOOK_ARM_POSE)
     else rig.rightShoulder.rotation.set(0, 0, 0)
 
-    clearAnchor(rig.anchors.body)
-    for (const slot of ['head', 'face', 'neck', 'hand'] as const) {
-      const anchor = rig.anchors[slot]
-      clearAnchor(anchor)
-      const accessory = customization[slot]
-      if (!accessory) continue
-      const anchorKey: AnchorKey = BODY_ANCHORED.has(accessory) ? 'body' : slot
+    for (const anchor of Object.values(rig.anchors)) clearAnchor(anchor)
+    for (const accessory of customization.accessories) {
+      const anchorKey: AnchorKey = BODY_ANCHORED.has(accessory)
+        ? 'body'
+        : LEFT_HAND_HELD.has(accessory) ? 'leftHand' : ACCESSORY_CATALOG[accessory].slot
       const targetAnchor = rig.anchors[anchorKey]
+      const mirrored = anchorKey === 'leftHand'
 
       if (rig.kind === 'kkebook' && GLB_ACCESSORIES.has(accessory)) {
         // GLB 악세서리: 자리만 먼저 잡고, 파일이 준비되면 채운다 (대부분 미리 받아져 있어 바로 채워짐)
         const holder = new Group()
         holder.name = `accessory-${accessory}`
+        if (mirrored) holder.scale.x = -1
         targetAnchor.add(holder)
         const requestedRig = rig
         void loadAccessoryTemplate(accessory).then((template) => {
-          // 그 사이 다른 악세서리로 바꿨거나 캐릭터가 사라졌으면 무시
+          // 그 사이 벗었거나 캐릭터가 사라졌으면 무시
           if (holder.parent !== targetAnchor || rig !== requestedRig) return
           holder.add(template
             ? template.clone(true)
@@ -453,7 +468,9 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
       }
 
       const prototype = createAccessoryModel(accessory)
-      targetAnchor.add(rig.kind === 'kkebook' ? fitPrototypeAccessory(prototype, anchorKey, targetAnchor) : prototype)
+      const placed = rig.kind === 'kkebook' ? fitPrototypeAccessory(prototype, anchorKey, targetAnchor) : prototype
+      if (mirrored) placed.scale.x *= -1
+      targetAnchor.add(placed)
     }
   }
 
