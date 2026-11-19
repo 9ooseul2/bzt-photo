@@ -15,7 +15,7 @@ import {
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
 import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
 import { MovementInput } from '../controls/MovementInput.ts'
-import { createFrogVisitorModel, FROG_VISITOR_CONFIG, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
+import { createFrogVisitorModel, FROG_VISITOR_CONFIG, KKEBOOK_SEAT_BOTTOM, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
 import { DestinationMarker } from '../characters/DestinationMarker.ts'
 import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
 import { VisitorOverheadDisplay } from '../characters/VisitorOverheadDisplay.ts'
@@ -36,8 +36,14 @@ import { RoomIntroGallery, type RoomIntroInstance } from './exhibition/roomIntro
 import type { RoomIntroConfig } from './exhibition/roomIntro/types.ts'
 import { getRoomPropNavigationObstacles, RoomProps } from './exhibition/props/RoomProps.ts'
 import { TrackLighting } from './exhibition/lighting/TrackLighting.ts'
+import { CinemaHall, getCinemaNavigationObstacles, type CinemaSeat } from './exhibition/cinema/CinemaHall.ts'
 import type { ExhibitionRoomDefinition, RoomLightingConfig } from '../rooms/types.ts'
+import { RoomNotice } from '../ui/RoomNotice.ts'
+import { SeatKeyHint } from '../ui/SeatKeyHint.ts'
 import type { OccupancyProvider } from '../services/occupancy.ts'
+
+/** 소파 앞 서는 자리에서 이 거리(m) 안에 있으면 키보드 안내(Space 앉기)를 띄운다 */
+const SEAT_KEY_HINT_DISTANCE = 1.0
 
 interface PointerInteraction {
   button: number
@@ -55,6 +61,11 @@ interface PendingViewing {
   phase: 'walking' | 'turning' | 'waiting'
   elapsed: number
   hasStartedTurning: boolean
+}
+
+/** 의자로 걸어가는 중 */
+interface PendingSeat {
+  seat: CinemaSeat
 }
 
 interface PendingRoomIntro {
@@ -106,6 +117,20 @@ export class ExhibitionScene {
   private readonly scene = new Scene()
   private readonly thirdPersonCamera: ThirdPersonCamera
   private readonly trackLighting: TrackLighting | undefined
+  /** 영상관일 때만 있음 */
+  private readonly cinema: CinemaHall | undefined
+  private pendingSeat: PendingSeat | undefined
+  /** 지금 앉아 있는 의자 */
+  private seatedAt: CinemaSeat | undefined
+  /** 영상관 입장 안내 문구 */
+  private readonly roomNotice: RoomNotice | undefined
+  /** 키보드로 다니는 관람객용 "Space 앉기" 안내 */
+  private readonly seatKeyHint: SeatKeyHint | undefined
+  /** 지금 Space를 누르면 앉게 될 소파 */
+  private seatKeyTarget: CinemaSeat | undefined
+  /** 키보드로 한 번이라도 걸었는지 (마우스·모바일 관람객에게는 키 안내를 띄우지 않는다) */
+  private hasUsedKeyboard = false
+  private readonly seatHintPosition = new Vector3()
   private animationFrameId: number | undefined
   private pendingViewing: PendingViewing | undefined
   private pendingRoomIntro: PendingRoomIntro | undefined
@@ -144,8 +169,12 @@ export class ExhibitionScene {
     this.room = new ExhibitionRoom(
       roomDefinition.config,
       roomDefinition.appearance,
-      getRoomPropNavigationObstacles(roomProps),
+      [
+        ...getRoomPropNavigationObstacles(roomProps),
+        ...(roomDefinition.cinema ? getCinemaNavigationObstacles(roomDefinition.cinema) : []),
+      ],
     )
+    this.cinema = roomDefinition.cinema ? new CinemaHall(roomDefinition.cinema) : undefined
     this.frogVisual = createFrogVisitorModel(customization)
     this.character = new VisitorCharacter(
       this.frogVisual,
@@ -206,6 +235,7 @@ export class ExhibitionScene {
     this.scene.add(this.portals.group)
     this.scene.add(this.roomProps.group)
     if (this.trackLighting) this.scene.add(this.trackLighting.group)
+    if (this.cinema) this.scene.add(this.cinema.group)
     this.scene.add(this.character.root)
     this.scene.add(this.destinationMarker.mesh)
     this.createLighting(roomDefinition.lighting)
@@ -216,6 +246,11 @@ export class ExhibitionScene {
     )
     this.registerPointerControls()
     this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
+    if (roomDefinition.cinema) {
+      this.roomNotice = new RoomNotice(this.container, roomDefinition.cinema.entryNotice)
+      this.seatKeyHint = new SeatKeyHint(this.container)
+      window.addEventListener('keydown', this.onSeatKey)
+    }
     this.resize()
     window.addEventListener('resize', this.resize)
   }
@@ -235,6 +270,9 @@ export class ExhibitionScene {
 
     window.removeEventListener('resize', this.resize)
     this.keyboardControls.dispose()
+    window.removeEventListener('keydown', this.onSeatKey)
+    this.roomNotice?.dispose()
+    this.seatKeyHint?.dispose()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
@@ -250,6 +288,7 @@ export class ExhibitionScene {
     this.roomIntroGallery.dispose()
     this.roomProps.dispose()
     this.trackLighting?.dispose()
+    this.cinema?.dispose()
     this.portals.dispose()
     this.minimap.dispose()
     this.renderer.dispose()
@@ -268,6 +307,7 @@ export class ExhibitionScene {
     if (!enabled) {
       this.cancelPendingViewing()
       this.cancelPendingRoomIntro()
+      this.cancelPendingSeat()
       this.portalApproach.cancel()
       this.canvas.style.cursor = 'default'
     }
@@ -285,6 +325,7 @@ export class ExhibitionScene {
   cancelInteractions(): void {
     this.cancelPendingViewing()
     this.cancelPendingRoomIntro()
+    this.cancelPendingSeat()
     this.portalApproach.cancel()
   }
 
@@ -475,6 +516,13 @@ export class ExhibitionScene {
   private handleSceneClick(event: PointerEvent): void {
     this.setRayFromEvent(event)
     const target = this.getInteractiveTargetAtRay()
+    if (target?.seat) {
+      if (this.seatedAt?.id !== target.seat.id && this.pendingSeat?.seat.id !== target.seat.id) this.startSeating(target.seat)
+      return
+    }
+    // 앉아 있다가 다른 곳을 누르면 먼저 일어난다
+    if (this.seatedAt) this.standUp()
+    this.cancelPendingSeat()
     if (target?.artwork) {
       if (this.pendingViewing?.artwork.config.id !== target.artwork.config.id) {
         this.startArtworkViewing(target.artwork)
@@ -561,6 +609,116 @@ export class ExhibitionScene {
     this.destinationMarker.show(spot.position)
   }
 
+  /** 의자 앞까지 걸어간 뒤 앉는다 */
+  private startSeating(seat: CinemaSeat): void {
+    // 클릭(또는 Space) 순간에 영상을 준비해 둬야 휴대폰에서도 앉은 뒤 소리가 난다
+    this.cinema?.prepare()
+    this.portalApproach.cancel()
+    this.cancelPendingViewing()
+    this.cancelPendingRoomIntro()
+    if (this.seatedAt) this.standUp()
+    this.pendingSeat = { seat }
+    const isAlreadyNear = Math.hypot(
+      this.character.root.position.x - seat.approachPoint.x,
+      this.character.root.position.z - seat.approachPoint.z,
+    ) <= ALREADY_NEAR_DISTANCE
+    if (isAlreadyNear) return
+    const path = this.pathfinder.findPath(this.character.root.position, seat.approachPoint)
+    if (!this.character.setPath(path)) {
+      this.pendingSeat = undefined
+      return
+    }
+    this.destinationMarker.show(seat.approachPoint)
+  }
+
+  private updatePendingSeat(): void {
+    const pending = this.pendingSeat
+    if (!pending || this.character.isMoving || !this.cinema) return
+    this.pendingSeat = undefined
+    this.destinationMarker.hide()
+    const { seat } = pending
+    const screen = this.cinema.screenCenter
+    this.character.sitAt(seat.position, { x: screen.x, z: screen.z }, seat.seatTop - KKEBOOK_SEAT_BOTTOM)
+    this.seatedAt = seat
+    // 카메라가 스크린 정면을 보게 하고, 영상을 0초부터 재생한다
+    this.thirdPersonCamera.guideToward(this.character.getCameraTarget(), screen, 1.1)
+    this.cinema.startScreening()
+  }
+
+  private standUp(): void {
+    const seat = this.seatedAt
+    if (!seat) return
+    this.seatedAt = undefined
+    this.character.standAt(seat.approachPoint)
+    this.cinema?.stopScreening()
+  }
+
+  /**
+   * 키보드로 다니는 관람객에게만: 소파 앞(1m 안)에 서면 그 소파 위에 "Space 앉기",
+   * 앉아 있으면 화면 아래에 "Space 일어나기"를 띄운다.
+   */
+  private updateSeatKeyHint(): void {
+    const hint = this.seatKeyHint
+    if (!hint || !this.cinema) return
+    this.seatKeyTarget = undefined
+    if (!this.hasUsedKeyboard || !this.interactionEnabled || this.pendingSeat) {
+      hint.hide()
+      return
+    }
+    if (this.seatedAt) {
+      hint.showDocked('일어나기')
+      return
+    }
+    const position = this.character.root.position
+    let nearest: CinemaSeat | undefined
+    let nearestDistance = SEAT_KEY_HINT_DISTANCE
+    for (const seat of this.cinema.seats) {
+      const distance = Math.hypot(position.x - seat.approachPoint.x, position.z - seat.approachPoint.z)
+      if (distance <= nearestDistance) {
+        nearest = seat
+        nearestDistance = distance
+      }
+    }
+    if (!nearest) {
+      hint.hide()
+      return
+    }
+    // 소파 위쪽 한 점을 화면 좌표로 바꿔서 안내를 띄운다
+    this.seatHintPosition.set(nearest.object.position.x, 1.05, nearest.object.position.z).project(this.thirdPersonCamera.camera)
+    if (this.seatHintPosition.z > 1) {
+      hint.hide()
+      return
+    }
+    const { clientWidth, clientHeight } = this.container
+    this.seatKeyTarget = nearest
+    hint.showAt(((this.seatHintPosition.x + 1) / 2) * clientWidth, ((1 - this.seatHintPosition.y) / 2) * clientHeight, '앉기')
+  }
+
+  /** Space: 안내가 떠 있는 소파에 앉거나, 앉아 있으면 일어난다 */
+  private readonly onSeatKey = (event: KeyboardEvent): void => {
+    if (event.code !== 'Space' || event.repeat) return
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
+    // 입력칸·버튼에 포커스가 있을 때는 그쪽 동작을 우선한다
+    if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, button, a, [contenteditable="true"]')) return
+    if (!this.interactionEnabled) return
+    if (this.seatedAt) {
+      event.preventDefault()
+      this.standUp()
+      return
+    }
+    if (this.seatKeyTarget) {
+      event.preventDefault()
+      this.startSeating(this.seatKeyTarget)
+    }
+  }
+
+  private cancelPendingSeat(): void {
+    if (!this.pendingSeat) return
+    this.pendingSeat = undefined
+    this.character.clearPath()
+    this.destinationMarker.hide()
+  }
+
   private cancelPendingViewing(): void {
     if (!this.pendingViewing) return
     this.pendingViewing = undefined
@@ -612,19 +770,24 @@ export class ExhibitionScene {
   }
 
   /** Interactive foreground content is valid only when rendered in front of structural room geometry. */
-  private getInteractiveTargetAtRay(): { artwork?: ArtworkInstance; portal?: PortalInstance; roomIntro?: RoomIntroInstance } | undefined {
+  private getInteractiveTargetAtRay(): { artwork?: ArtworkInstance; portal?: PortalInstance; roomIntro?: RoomIntroInstance; seat?: CinemaSeat } | undefined {
     const artworkHit = this.raycaster.intersectObject(this.artworkGallery.group, true)[0]
     const portalHit = this.raycaster.intersectObject(this.portals.group, true)[0]
     const roomIntroHit = this.raycaster.intersectObject(this.roomIntroGallery.group, true)[0]
     const roomHit = this.raycaster.intersectObject(this.room.group, true)[0]
     const isInFrontOfRoom = (distance: number): boolean => !roomHit || distance < roomHit.distance
-    const targets: Array<{ distance: number; target: { artwork?: ArtworkInstance; portal?: PortalInstance; roomIntro?: RoomIntroInstance } }> = []
+    const targets: Array<{ distance: number; target: { artwork?: ArtworkInstance; portal?: PortalInstance; roomIntro?: RoomIntroInstance; seat?: CinemaSeat } }> = []
     const artwork = artworkHit && isInFrontOfRoom(artworkHit.distance) ? this.artworkGallery.getArtworkFromObject(artworkHit.object) : undefined
     const portal = portalHit && isInFrontOfRoom(portalHit.distance) ? this.portals.getPortalFromObject(portalHit.object) : undefined
     const roomIntro = roomIntroHit && isInFrontOfRoom(roomIntroHit.distance) ? this.roomIntroGallery.getIntroFromObject(roomIntroHit.object) : undefined
     if (artwork && artworkHit) targets.push({ distance: artworkHit.distance, target: { artwork } })
     if (portal && portalHit) targets.push({ distance: portalHit.distance, target: { portal } })
     if (roomIntro && roomIntroHit) targets.push({ distance: roomIntroHit.distance, target: { roomIntro } })
+    if (this.cinema) {
+      const seatHit = this.raycaster.intersectObject(this.cinema.group, true).find((hit) => this.cinema?.getSeatFromObject(hit.object))
+      const seat = seatHit && isInFrontOfRoom(seatHit.distance) ? this.cinema.getSeatFromObject(seatHit.object) : undefined
+      if (seat && seatHit) targets.push({ distance: seatHit.distance, target: { seat } })
+    }
     targets.sort((left, right) => left.distance - right.distance)
     return targets[0]?.target
   }
@@ -651,6 +814,8 @@ export class ExhibitionScene {
     this.destinationMarker.update(deltaSeconds)
     this.updatePendingViewing(deltaSeconds)
     this.updatePendingRoomIntro(deltaSeconds)
+    this.updatePendingSeat()
+    this.updateSeatKeyHint()
     this.portalApproach.update(deltaSeconds)
     this.portals.update(now / 1_000)
     this.overheadDisplay.updateEmotion(this.emotionState.state, now)
@@ -675,6 +840,9 @@ export class ExhibitionScene {
   private applyDirectMovementInput(): void {
     const { forward, right } = this.interactionEnabled ? this.movementInput.axes : { forward: 0, right: 0 }
     const isActive = forward !== 0 || right !== 0
+    if (isActive) this.hasUsedKeyboard = true
+    // 소파에 앉아 있을 때 방향키를 누르면 먼저 일어나서 소파 앞에 선 뒤 걷는다
+    if (isActive && this.seatedAt) this.standUp()
     if (isActive && !this.wasDirectMoving) {
       // Walking by hand takes over from any click-started approach.
       this.cancelInteractions()

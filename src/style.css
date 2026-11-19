@@ -944,6 +944,13 @@ button {
 .guestbook-note__actions button { border: 1px solid var(--brand-line); border-radius: 0.35rem; padding: 0.62rem 0.85rem; background: var(--surface); color: var(--brand-ink); font-size: 0.83rem; font-weight: 650; }
 .guestbook-note__actions .guestbook-note__submit { border-color: var(--brand-deep); background: var(--brand-deep); color: var(--surface); }
 .guestbook-toast { position: absolute; z-index: 35; bottom: 5rem; left: 50%; margin: 0; transform: translateX(-50%); border-radius: 0.45rem; padding: 0.65rem 0.9rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.83rem; box-shadow: 0 5px 16px rgb(0 0 0 / 18%); }
+.room-notice { position: absolute; z-index: 35; top: 1.5rem; left: 50%; max-width: calc(100% - 2rem); margin: 0; transform: translateX(-50%); border-radius: 0.45rem; padding: 0.65rem 1rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.83rem; text-align: center; box-shadow: 0 5px 16px rgb(0 0 0 / 18%); pointer-events: none; animation: room-notice-in 260ms ease both; transition: opacity 450ms ease; }
+.room-notice--hiding { opacity: 0; }
+@keyframes room-notice-in { from { opacity: 0; transform: translate(-50%, -0.4rem); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (max-width: 680px) { .room-notice { top: auto; bottom: 5rem; } }
+.seat-key-hint { position: absolute; z-index: 30; display: flex; align-items: center; gap: 0.4rem; transform: translate(-50%, -100%); border-radius: 999px; padding: 0.35rem 0.75rem 0.35rem 0.4rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.8rem; white-space: nowrap; box-shadow: 0 4px 12px rgb(0 0 0 / 25%); pointer-events: none; }
+.seat-key-hint kbd { border: 1px solid rgb(255 255 255 / 55%); border-radius: 0.3rem; padding: 0.05rem 0.4rem; background: rgb(255 255 255 / 12%); font: inherit; font-size: 0.72rem; }
+.seat-key-hint--docked { bottom: 5rem; left: 50%; transform: translateX(-50%); }
 .scene-transition { position: absolute; z-index: 50; inset: 0; background: var(--brand-paper); opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
 .scene-transition--visible { opacity: 1; }
 

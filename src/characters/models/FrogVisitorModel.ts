@@ -122,6 +122,12 @@ const BODY_ANCHORED: ReadonlySet<AccessoryId> = new Set<AccessoryId>(['crossbody
  */
 const BOOK_ARM_POSE = new Quaternion().setFromAxisAngle(new Vector3(-0.66352, -0.71306, -0.22646).normalize(), 0.98857)
 
+/** 의자에 앉은 자세 (라디안). legs: 다리를 앞으로 드는 각도, arms: 팔을 앞으로 드는 각도 */
+const SEATED_POSE = { legs: -1.25, arms: -0.35 }
+
+/** 의자에 앉았을 때 캐릭터 기준점을 의자 윗면에서 얼마나 내릴지 (모델 기준 단위 × 크기). 엉덩이가 의자에 닿게 */
+export const KKEBOOK_SEAT_BOTTOM = 0.168 * MODEL_SCALE
+
 const KKEBOOK_URL = publicAsset('models/characters/kkebook.glb')
 
 const BODY_COLOR = '#b9e59a'
@@ -131,6 +137,7 @@ const FACE_COLOR = '#4a3932'
 
 export interface FrogVisitorVisual extends CharacterVisual {
   applyCustomization(customization: FrogCustomization): void
+  setSeated(seated: boolean): void
   dispose(): void
   getCustomization(): FrogCustomization
 }
@@ -395,6 +402,8 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
   let customization = normalizeCustomization(initialCustomization)
   /** 오른팔이 책을 끼는 자세로 고정되어 있는지 */
   let rightArmPosed = false
+  /** 의자에 앉아 있는지 (다리를 앞으로 뻗고, 걷기 동작을 멈춤) */
+  let seated = false
 
   const clearAnchor = (anchor: Object3D): void => {
     anchor.traverse((object) => {
@@ -480,6 +489,10 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
       applyToRig()
     },
     getCustomization(): FrogCustomization { return { ...customization } },
+    setSeated(next: boolean): void {
+      seated = next
+      walkBlend = 0
+    },
     dispose(): void {
       disposed = true
       if (rig) disposeRig(rig)
@@ -493,6 +506,17 @@ export function createFrogVisitorModel(initialCustomization?: FrogCustomization)
         gaitTime += deltaSeconds * Math.max(5.2, state.movementSpeed * 2.65)
       }
       if (!rig) return
+
+      if (seated) {
+        // 앉은 자세: 다리는 앞으로 뻗고, 팔은 살짝 앞으로. 몸은 흔들리지 않음
+        rig.leftHip.rotation.x = SEATED_POSE.legs
+        rig.rightHip.rotation.x = SEATED_POSE.legs
+        rig.leftShoulder.rotation.x = SEATED_POSE.arms
+        if (!rightArmPosed) rig.rightShoulder.rotation.x = SEATED_POSE.arms
+        for (const part of rig.bobParts) part.object.position.y = part.baseY
+        rig.root.rotation.z = 0
+        return
+      }
 
       const stride = Math.sin(gaitTime)
       const legSwing = stride * WALK_ANIMATION.legSwing * walkBlend
