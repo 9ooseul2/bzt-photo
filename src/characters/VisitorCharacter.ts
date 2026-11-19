@@ -161,6 +161,23 @@ export class VisitorCharacter {
     })
   }
 
+  /**
+   * 의자에 앉힌다: 위치와 방향을 바로 정하고 앉은 자세로 바꾼다.
+   * heightOffset = 캐릭터 발 기준점을 바닥에서 얼마나 올릴지 (의자 높이에 맞춤)
+   */
+  sitAt(point: { x: number; z: number }, facing: { x: number; z: number }, heightOffset: number): void {
+    this.clearPath()
+    this.root.position.set(point.x, heightOffset, point.z)
+    this.root.rotation.y = Math.atan2(facing.x - point.x, facing.z - point.z)
+    this.visual.setSeated?.(true)
+  }
+
+  /** 의자에서 일어나 바닥의 한 지점에 선다. */
+  standAt(point: { x: number; z: number }): void {
+    this.visual.setSeated?.(false)
+    this.root.position.set(point.x, 0, point.z)
+  }
+
   getCameraTarget(target = this.cameraTarget): Vector3 {
     return target.copy(this.root.position).add(new Vector3(0, this.config.cameraTargetHeight, 0))
   }

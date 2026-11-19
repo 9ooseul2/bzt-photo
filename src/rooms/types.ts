@@ -3,6 +3,7 @@ import type { ExhibitionRoomConfig } from '../scenes/exhibition/types.ts'
 import type { RoomIntroConfig } from '../scenes/exhibition/roomIntro/types.ts'
 import type { RoomPropConfig } from '../scenes/exhibition/props/types.ts'
 import type { PortalConfig } from '../scenes/portals/types.ts'
+import type { CinemaConfig } from '../scenes/exhibition/cinema/types.ts'
 
 /** Optional room-level material overrides; omitted values retain gallery one defaults. */
 export interface RoomAppearanceConfig {
@@ -42,4 +43,6 @@ export interface ExhibitionRoomDefinition {
   appearance?: RoomAppearanceConfig
   lighting?: RoomLightingConfig
   props?: readonly RoomPropConfig[]
+  /** 영상관: 스크린과 의자 */
+  cinema?: CinemaConfig
 }
