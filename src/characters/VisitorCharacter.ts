@@ -1,6 +1,7 @@
 import { Group, Vector3 } from 'three'
 import type { CharacterVisual } from './CharacterVisual.ts'
 import type { NavigationPoint } from './pathfinding/GridPathfinder.ts'
+import { RUN_SPEED_MULTIPLIER } from '../controls/MovementInput.ts'
 
 const ARRIVAL_DISTANCE = 0.035
 /** Shared by click-to-move and direct walking so both feel the same. */
@@ -55,7 +56,7 @@ export class VisitorCharacter {
     return this.path.length > 0
   }
 
-  /** True while a keyboard (or, later, a joystick) is steering the visitor directly. */
+  /** True while a keyboard or the touch joystick is steering the visitor directly. */
   get isDirectMoving(): boolean {
     return this.directInput.lengthSq() > DIRECT_INPUT_THRESHOLD ** 2
   }
@@ -66,7 +67,8 @@ export class VisitorCharacter {
   }
 
   /**
-   * World-space walking direction on the floor plane. Length 0..1 scales the speed;
+   * World-space walking direction on the floor plane. Length 0..1 scales the walking speed,
+   * and up to RUN_SPEED_MULTIPLIER (2) means running (Shift held).
    * (0, 0) stops direct walking and leaves click-to-move in charge again.
    */
   setDirectMovement(x: number, z: number): void {
@@ -187,7 +189,7 @@ export class VisitorCharacter {
     this.path = []
     this.hasFacingTarget = false
 
-    const strength = Math.min(this.directInput.length(), 1)
+    const strength = Math.min(this.directInput.length(), RUN_SPEED_MULTIPLIER)
     this.direction.copy(this.directInput).normalize()
     const targetRotation = Math.atan2(this.direction.x, this.direction.z)
     const turnBlend = 1 - Math.exp(-12 * deltaSeconds)
