@@ -1,4 +1,5 @@
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '../config/supabase.ts'
+import { normalizeCustomization, type FrogCustomization } from '../characters/customization/types.ts'
 import { GUESTBOOK_COLORS, type GuestbookColor, type GuestbookEntry } from './types.ts'
 
 const TABLE_URL = `${SUPABASE_URL}/rest/v1/guestbook_entries`
@@ -24,6 +25,8 @@ interface EntryRow {
   id: string
   message: string
   nickname: string
+  /** 글을 남길 때의 개구리 모습 (supabase/guestbook_appearance.sql). 예전 글은 null */
+  appearance?: unknown
 }
 
 /**
@@ -40,7 +43,7 @@ export class GuestbookRepository {
   async loadLatest(limit: number): Promise<GuestbookEntry[] | null> {
     try {
       const response = await this.request(
-        `${TABLE_URL}?select=id,nickname,message,color,created_at&order=created_at.desc&limit=${limit}`,
+        `${TABLE_URL}?select=id,nickname,message,color,created_at,appearance&order=created_at.desc&limit=${limit}`,
         { method: 'GET' },
       )
       if (!response.ok) return null
@@ -52,11 +55,16 @@ export class GuestbookRepository {
     }
   }
 
-  /** 새 글을 저장한다. 실패하면 GuestbookSaveFailure를 던진다. */
-  async save(input: { color: GuestbookColor; message: string; nickname: string }): Promise<GuestbookEntry> {
+  /**
+   * 새 글을 저장한다. 실패하면 GuestbookSaveFailure를 던진다.
+   * appearance: 등록하는 순간의 꾸미기 상태. 색과 착용 목록만 정리해서 보낸다.
+   */
+  async save(input: { color: GuestbookColor; message: string; nickname: string; appearance: FrogCustomization }): Promise<GuestbookEntry> {
     const id = globalThis.crypto?.randomUUID?.()
     if (!id) throw new GuestbookSaveFailure('network')
-    const body = { id, nickname: input.nickname, message: input.message, color: input.color, client_id: this.clientId() }
+    const { color: frogColor, accessories } = normalizeCustomization(input.appearance)
+    const appearance: FrogCustomization = { color: frogColor, accessories }
+    const body = { id, nickname: input.nickname, message: input.message, color: input.color, client_id: this.clientId(), appearance }
     let response: Response
     try {
       response = await this.request(TABLE_URL, {
@@ -75,7 +83,7 @@ export class GuestbookRepository {
     }
     this.rememberMine(id)
     // 저장 시각은 서버가 정하지만, 화면에는 바로 붙여야 하므로 지금 시각을 쓴다 (다음 입장 때 서버 값으로 맞춰짐)
-    return { id, nickname: input.nickname, message: input.message, color: input.color, createdAt: new Date().toISOString() }
+    return { id, nickname: input.nickname, message: input.message, color: input.color, createdAt: new Date().toISOString(), appearance }
   }
 
   /** 이 브라우저에서 쓴 글인지 (삭제 버튼 표시용) */
@@ -153,5 +161,9 @@ export class GuestbookRepository {
     message: row.message,
     color: row.color as GuestbookColor,
     createdAt: row.created_at,
+    // 형식이 틀린 값도 normalizeCustomization이 기본 개구리 쪽으로 정리한다. 값이 없으면(예전 글) 비워 둔다.
+    appearance: row.appearance && typeof row.appearance === 'object'
+      ? normalizeCustomization(row.appearance as Partial<FrogCustomization>)
+      : undefined,
   })
 }
