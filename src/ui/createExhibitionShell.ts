@@ -66,7 +66,10 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
             <li>관람 안내는 오른쪽 아래의 '?' 버튼에서 다시 확인하실 수 있습니다.</li>
             <li>조용한 관람을 위해 관람객 간 대화는 지원하지 않습니다. 대신 이모지로 감상을 자유롭게 표현해주세요!</li>
           </ul>
-          <button class="guide-dialog__confirm" type="button">관람 시작하기</button>
+          <div class="guide-dialog__footer">
+            <button class="guide-dialog__dismiss-today" type="button">오늘 그만 보기</button>
+            <button class="guide-dialog__confirm" type="button">관람 시작하기</button>
+          </div>
         </section>
       </section>
       <button class="photo-button" type="button" aria-label="인증샷 찍기" title="인증샷 찍기" hidden>📷</button>

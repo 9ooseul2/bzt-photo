@@ -323,6 +323,32 @@ button {
   color: var(--brand-deep);
 }
 
+.guide-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.guide-dialog__dismiss-today {
+  border: 0;
+  padding: 0.4rem 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.84rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.guide-dialog__dismiss-today:hover {
+  color: var(--brand-ink);
+}
+
+.guide-dialog__dismiss-today:focus-visible {
+  outline: 3px solid rgb(255 218 134 / 85%);
+  outline-offset: 3px;
+}
+
 .guide-dialog__confirm {
   display: block;
   width: min(100%, 13rem);
@@ -1123,6 +1149,12 @@ button {
 }
 
 @media (max-width: 520px) {
+  .guide-dialog__footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+
   .guide-dialog__confirm {
     width: 100%;
   }
