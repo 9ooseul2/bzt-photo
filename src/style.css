@@ -1167,3 +1167,53 @@ button {
 @media (max-width: 680px) {
   .customizer-screen__body { grid-template-columns:1fr; }.customizer-preview { order:-1; min-height:20rem; }.customizer-preview__canvas { min-height:19rem; }.inventory-slot__cards { grid-template-columns:repeat(4,minmax(3.5rem,1fr)); }.inventory-slot__cards--three { grid-template-columns:repeat(3,minmax(3.5rem,1fr)); }.customizer-screen__footer { position:sticky; bottom:0; background:var(--brand-paper); }
 }
+
+/* 가상 조이스틱 (TODO 3-2): 터치 기기에서만 왼쪽 아래에 보인다. 끝까지 밀면 달리기. */
+.virtual-joystick {
+  position: absolute;
+  z-index: 15;
+  left: calc(clamp(1.1rem, 3vw, 2rem) + env(safe-area-inset-left, 0px));
+  bottom: calc(clamp(1.1rem, 3vw, 2rem) + env(safe-area-inset-bottom, 0px));
+  display: none;
+  width: 120px;
+  height: 120px;
+  border: 1.5px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand-deep) 22%, transparent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
+  opacity: 0.72;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 120ms ease, border-color 120ms ease;
+}
+.virtual-joystick__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border: 1.5px solid rgb(255 255 255 / 85%);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand-deep) 78%, transparent);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 22%);
+  pointer-events: none;
+}
+.virtual-joystick--active { opacity: 1; }
+/* 달리는 중: 바깥 원과 손잡이가 밝아진다 */
+.virtual-joystick--running { border-color: rgb(255 218 134 / 95%); }
+.virtual-joystick--running .virtual-joystick__knob {
+  border-color: rgb(255 218 134 / 95%);
+  background: var(--brand-deep);
+  box-shadow: 0 0 0 4px rgb(255 218 134 / 35%), 0 3px 10px rgb(0 0 0 / 22%);
+}
+.guide-dialog__item--touch { display: none; }
+@media (pointer: coarse) {
+  .virtual-joystick { display: block; }
+  .guide-dialog__item--touch { display: list-item; }
+  .guide-dialog__item--keyboard { display: none; }
+}
+.virtual-joystick[hidden] { display: none !important; }
