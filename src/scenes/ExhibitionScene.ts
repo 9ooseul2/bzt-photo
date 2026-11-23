@@ -15,6 +15,7 @@ import {
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
 import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
 import { MovementInput } from '../controls/MovementInput.ts'
+import { VirtualJoystick } from '../controls/VirtualJoystick.ts'
 import { createFrogVisitorModel, FROG_VISITOR_CONFIG, KKEBOOK_SEAT_BOTTOM, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
 import { DestinationMarker } from '../characters/DestinationMarker.ts'
 import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
@@ -93,6 +94,7 @@ export class ExhibitionScene {
   private readonly destinationMarker: DestinationMarker
   private readonly directMovementCameraDirection = new Vector3()
   private readonly keyboardControls: KeyboardMovementControls
+  private readonly joystick: VirtualJoystick
   private readonly movementInput = new MovementInput()
   private wasDirectMoving = false
   private readonly frogVisual: FrogVisitorVisual
@@ -247,6 +249,7 @@ export class ExhibitionScene {
     )
     this.registerPointerControls()
     this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
+    this.joystick = new VirtualJoystick(this.container, this.movementInput)
     if (roomDefinition.cinema) {
       this.roomNotice = new RoomNotice(this.container, roomDefinition.cinema.entryNotice)
       this.seatKeyHint = new SeatKeyHint(this.container)
@@ -271,6 +274,7 @@ export class ExhibitionScene {
 
     window.removeEventListener('resize', this.resize)
     this.keyboardControls.dispose()
+    this.joystick.dispose()
     window.removeEventListener('keydown', this.onSeatKey)
     this.roomNotice?.dispose()
     this.seatKeyHint?.dispose()
@@ -304,6 +308,7 @@ export class ExhibitionScene {
 
     this.interactionEnabled = enabled
     this.character.setMovementEnabled(enabled)
+    this.joystick.setEnabled(enabled)
 
     if (!enabled) {
       this.cancelPendingViewing()
@@ -854,11 +859,12 @@ export class ExhibitionScene {
     this.animationFrameId = window.requestAnimationFrame(this.render)
   }
 
-  /** Turns keyboard (later joystick) input into a world direction relative to where the camera looks. */
+  /** Turns keyboard and joystick input into a world direction relative to where the camera looks. */
   private applyDirectMovementInput(): void {
     const { forward, right } = this.interactionEnabled ? this.movementInput.axes : { forward: 0, right: 0 }
     const isActive = forward !== 0 || right !== 0
-    if (isActive) this.hasUsedKeyboard = true
+    // "Space 앉기" 안내는 키보드로 걸을 때만 띄운다(휴대폰 조이스틱에는 Space 키가 없다).
+    if (isActive && this.movementInput.has('keyboard')) this.hasUsedKeyboard = true
     // 소파에 앉아 있을 때 방향키를 누르면 먼저 일어나서 소파 앞에 선 뒤 걷는다
     if (isActive && this.seatedAt) this.standUp()
     if (isActive && !this.wasDirectMoving) {

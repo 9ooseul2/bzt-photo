@@ -16,6 +16,7 @@ import { DestinationMarker } from '../characters/DestinationMarker.ts'
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
 import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
 import { MovementInput } from '../controls/MovementInput.ts'
+import { VirtualJoystick } from '../controls/VirtualJoystick.ts'
 import { captureFreePhoto } from '../photo/photoShot.ts'
 import { createFrogVisitorModel, FROG_VISITOR_CONFIG, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
 import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
@@ -52,6 +53,7 @@ export class GuestbookScene {
   private readonly destinationMarker = new DestinationMarker()
   private readonly directMovementCameraDirection = new Vector3()
   private readonly keyboardControls: KeyboardMovementControls
+  private readonly joystick: VirtualJoystick
   private readonly movementInput = new MovementInput()
   private wasDirectMoving = false
   private readonly emotionState: EmotionStateStore
@@ -119,6 +121,7 @@ export class GuestbookScene {
     this.thirdPersonCamera.update(this.character.getCameraTarget(), this.room.getCameraOccluders(), this.room.getCameraBounds())
     this.registerPointerControls()
     this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
+    this.joystick = new VirtualJoystick(this.container, this.movementInput)
     this.resize()
     window.addEventListener('resize', this.resize)
   }
@@ -154,6 +157,7 @@ export class GuestbookScene {
     if (this.animationFrameId !== undefined) window.cancelAnimationFrame(this.animationFrameId)
     window.removeEventListener('resize', this.resize)
     this.keyboardControls.dispose()
+    this.joystick.dispose()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
@@ -173,6 +177,7 @@ export class GuestbookScene {
   setInteractionEnabled(enabled: boolean): void {
     this.interactionEnabled = enabled
     this.character.setMovementEnabled(enabled)
+    this.joystick.setEnabled(enabled)
     this.canvas.style.cursor = enabled ? 'default' : ''
     if (!enabled) {
       this.postits.setHovered(undefined)
@@ -322,7 +327,7 @@ export class GuestbookScene {
     this.renderer.setSize(Math.max(clientWidth, 1), Math.max(clientHeight, 1), false)
   }
 
-  /** Turns keyboard (later joystick) input into a world direction relative to where the camera looks. */
+  /** Turns keyboard and joystick input into a world direction relative to where the camera looks. */
   private applyDirectMovementInput(): void {
     const { forward, right } = this.interactionEnabled ? this.movementInput.axes : { forward: 0, right: 0 }
     const isActive = forward !== 0 || right !== 0
