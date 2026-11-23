@@ -26,6 +26,21 @@ import type { FrogCustomization } from '../characters/customization/types.ts'
 const FLOAT = { lift: 0.3, bob: 0.07, speed: 1.6, sway: 0.035 }
 const ORBIT = { distance: 5.15, targetY: 1.05, pitch: 12, pitchMin: -25, pitchMax: 50, dragSpeed: 0.012 }
 
+/**
+ * 방명록 폴라로이드용 움직임: 정면을 보고 천천히 좌우로 살짝 돈다.
+ * - angle = 좌우로 도는 최대 각도(도), period = 한 번 왕복하는 시간(초)
+ * - lift/bob/speed = 아주 약한 둥둥
+ * - distance/targetY/pitch = 풍선·모자까지 사진 안에 다 들어오도록 조금 멀리서 본다
+ */
+const POLAROID = { angle: 15, period: 5, lift: 0.12, bob: 0.025, speed: 1.2, distance: 4.1, targetY: 1.02, pitch: 6 }
+
+export interface FrogPreviewOptions {
+  /** 드래그로 돌려 보기 (기본 true: 꾸미기 화면) */
+  interactive?: boolean
+  /** float = 꾸미기 화면의 둥둥 (기본), polaroid = 방명록 사진 속 좌우로 살짝 도는 움직임 */
+  motion?: 'float' | 'polaroid'
+}
+
 /** 떠 있는 캐릭터 아래 바닥에 보이는 흐릿한 그림자 */
 function createSoftShadow(): Mesh<PlaneGeometry, MeshBasicMaterial> {
   const canvas = document.createElement('canvas')
@@ -63,8 +78,18 @@ export class FrogPreview {
   private readonly host: HTMLElement
   private animationFrameId: number | undefined
 
-  constructor(host: HTMLElement, customization: FrogCustomization) {
+  private readonly interactive: boolean
+  private readonly motion: 'float' | 'polaroid'
+  private readonly orbit: { distance: number; targetY: number }
+
+  constructor(host: HTMLElement, customization: FrogCustomization, options: FrogPreviewOptions = {}) {
     this.host = host
+    this.interactive = options.interactive ?? true
+    this.motion = options.motion ?? 'float'
+    this.orbit = this.motion === 'polaroid'
+      ? { distance: POLAROID.distance, targetY: POLAROID.targetY }
+      : { distance: ORBIT.distance, targetY: ORBIT.targetY }
+    if (this.motion === 'polaroid') this.pitch = POLAROID.pitch * Math.PI / 180
     // 배경은 투명: 뒤에 깔린 2D 미니룸 그림이 비쳐 보인다
     this.renderer = new WebGLRenderer({ antialias: true, alpha: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -80,10 +105,12 @@ export class FrogPreview {
     this.scene.add(key)
     this.updateCamera()
     this.resize()
-    this.host.addEventListener('pointerdown', this.onPointerDown)
-    this.host.addEventListener('pointermove', this.onPointerMove)
-    this.host.addEventListener('pointerup', this.onPointerUp)
-    this.host.addEventListener('pointercancel', this.onPointerUp)
+    if (this.interactive) {
+      this.host.addEventListener('pointerdown', this.onPointerDown)
+      this.host.addEventListener('pointermove', this.onPointerMove)
+      this.host.addEventListener('pointerup', this.onPointerUp)
+      this.host.addEventListener('pointercancel', this.onPointerUp)
+    }
     window.addEventListener('resize', this.resize)
     this.clock.start()
     this.render()
@@ -103,13 +130,15 @@ export class FrogPreview {
     this.shadow.material.map?.dispose()
     this.shadow.material.dispose()
     this.renderer.dispose()
+    // WebGL 컨텍스트를 바로 돌려줘서, 카드를 여러 번 열고 닫아도 컨텍스트가 쌓이지 않게 한다
+    this.renderer.forceContextLoss()
     this.renderer.domElement.remove()
   }
 
   /** 카메라를 캐릭터 둘레의 구 위에 놓는다 (위아래 각도만, 좌우는 받침이 돈다) */
   private updateCamera(): void {
-    const target = new Vector3(0, ORBIT.targetY, 0)
-    this.camera.position.set(0, target.y + Math.sin(this.pitch) * ORBIT.distance, Math.cos(this.pitch) * ORBIT.distance)
+    const target = new Vector3(0, this.orbit.targetY, 0)
+    this.camera.position.set(0, target.y + Math.sin(this.pitch) * this.orbit.distance, Math.cos(this.pitch) * this.orbit.distance)
     this.camera.lookAt(target)
   }
 
@@ -143,12 +172,18 @@ export class FrogPreview {
   private readonly render = (): void => {
     const delta = Math.min(this.clock.getDelta(), 0.05)
     this.elapsed += delta
-    // 둥둥: 위아래로 천천히 오르내리며 살짝 좌우로 기울어짐
-    const wave = Math.sin(this.elapsed * FLOAT.speed)
-    this.floater.position.y = FLOAT.lift + wave * FLOAT.bob
-    this.floater.rotation.z = Math.sin(this.elapsed * FLOAT.speed * 0.5) * FLOAT.sway
+    const float = this.motion === 'polaroid' ? POLAROID : FLOAT
+    const wave = Math.sin(this.elapsed * float.speed)
+    this.floater.position.y = float.lift + wave * float.bob
+    if (this.motion === 'polaroid') {
+      // 폴라로이드: 정면을 보고 천천히 좌우로 살짝 돈다
+      this.turntable.rotation.y = Math.sin((this.elapsed / POLAROID.period) * Math.PI * 2) * POLAROID.angle * Math.PI / 180
+    } else {
+      // 둥둥: 위아래로 천천히 오르내리며 살짝 좌우로 기울어짐
+      this.floater.rotation.z = Math.sin(this.elapsed * FLOAT.speed * 0.5) * FLOAT.sway
+    }
     // 그림자: 높이 올라갈수록 작고 옅게
-    const height = this.floater.position.y / (FLOAT.lift + FLOAT.bob)
+    const height = this.floater.position.y / (float.lift + float.bob)
     this.shadow.scale.setScalar(1.05 - 0.2 * height)
     this.shadow.material.opacity = 1.1 - 0.5 * height
     this.frog.updateAnimation(delta, { isWalking: false, movementSpeed: 0 })

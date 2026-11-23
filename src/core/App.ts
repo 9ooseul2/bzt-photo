@@ -11,6 +11,7 @@ import { VisitorSession } from '../user/VisitorSession.ts'
 import { GuestbookRepository, GuestbookSaveFailure, type GuestbookSaveError } from '../guestbook/GuestbookRepository.ts'
 import { assignGuestbookPlacements, getFirstAvailablePlacement, GUESTBOOK_CAPACITY } from '../guestbook/GuestbookPlacement.ts'
 import { SAMPLE_GUESTBOOK_ENTRIES } from '../guestbook/sampleEntries.ts'
+import { preloadGuestbookFont } from '../guestbook/guestbookFont.ts'
 import type { GuestbookColor, GuestbookEntry } from '../guestbook/types.ts'
 import { FrogCustomizationStore } from '../characters/customization/FrogCustomizationStore.ts'
 import type { FrogCustomization } from '../characters/customization/types.ts'
@@ -111,6 +112,7 @@ export class App {
         onLeave: () => { void this.returnToGallery() },
         onModalVisibility: (isVisible) => this.guestbookScene?.setInteractionEnabled(!isVisible),
         onSubmit: (message, color) => this.createGuestbookEntry(message, color),
+        getAppearance: () => this.customizationStore.state,
       },
     )
     this.viewingGuide = new ViewingGuide(shell.guideHost, shell.helpButton, (isVisible) => {
@@ -190,6 +192,8 @@ export class App {
   private async enterGuestbook(): Promise<void> {
     if (this.sceneTransitionInProgress || !this.scene) return
     this.lastExhibitionRoomId = this.currentRoomId
+    // 카드 손글씨 글꼴(약 2MB)을 지금부터 받아 둔다. 첫 로딩에는 넣지 않는다.
+    preloadGuestbookFont()
     this.roomSwitcher.hide()
     this.scene?.setMinimapVisible(false)
     await this.withTransition(async () => {
@@ -289,7 +293,8 @@ export class App {
     }
     let saved: GuestbookEntry
     try {
-      saved = await this.guestbookRepository.save({ nickname: this.session.nickname, message, color })
+      // 등록하는 순간의 꾸미기 상태를 함께 저장한다 (나중에 꾸미기를 바꿔도 이 글의 개구리는 그대로)
+      saved = await this.guestbookRepository.save({ nickname: this.session.nickname, message, color, appearance: this.customizationStore.state })
     } catch (error) {
       const reason: GuestbookSaveError = error instanceof GuestbookSaveFailure ? error.reason : 'network'
       this.guestbookUi.toast(GUESTBOOK_SAVE_MESSAGES[reason])
