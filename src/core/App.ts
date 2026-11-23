@@ -210,7 +210,7 @@ export class App {
       this.guestbookUi.showGalleryControls()
       this.roomSwitcher.show(this.currentRoomId)
       scene.setMinimapVisible(showMinimap)
-      if (showGuide) this.viewingGuide.show()
+      if (showGuide) this.viewingGuide.showAutomatically()
       else this.helpButton.hidden = false
     } catch (error) {
       console.error('Failed to initialize the exhibition scene.', error)
