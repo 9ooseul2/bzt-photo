@@ -6,6 +6,8 @@ import { EmotionPicker } from '../ui/EmotionPicker.ts'
 import { LoadingScreen } from '../ui/LoadingScreen.ts'
 import { ViewingGuide } from '../ui/ViewingGuide.ts'
 import { GuestbookUi } from '../ui/GuestbookUi.ts'
+import { PhotoPreview } from '../ui/PhotoPreview.ts'
+import { composePhotoCard } from '../photo/photoCard.ts'
 import { EmotionStateStore } from '../user/EmotionState.ts'
 import { VisitorSession } from '../user/VisitorSession.ts'
 import { GuestbookRepository, GuestbookSaveFailure, type GuestbookSaveError } from '../guestbook/GuestbookRepository.ts'
@@ -65,6 +67,8 @@ export class App {
   private lastExhibitionRoomId = 'room-1'
   private scene: ExhibitionScene | undefined
   private sceneTransitionInProgress = false
+  private readonly photoButton: HTMLButtonElement
+  private readonly photoPreview: PhotoPreview
 
   constructor(rootElement: HTMLElement) {
     const shell = createExhibitionShell(rootElement)
@@ -86,7 +90,14 @@ export class App {
     this.artworkViewer = new ArtworkViewer(shell.artworkViewerHost, (isVisible) => {
       this.scene?.setInteractionEnabled(!isVisible)
       if (isVisible) this.emotionPicker.close()
-    })
+    }, (artwork) => this.takePhoto(artwork.id))
+    this.photoButton = shell.photoButton
+    this.photoButton.addEventListener('click', () => this.takePhoto())
+    this.photoPreview = new PhotoPreview(shell.photoPreviewHost, (isVisible) => {
+      this.scene?.setInteractionEnabled(!isVisible)
+      this.guestbookScene?.setInteractionEnabled(!isVisible)
+      if (isVisible) this.emotionPicker.close()
+    }, () => this.takePhoto(this.lastPhotoArtworkId))
     this.roomIntroReader = new RoomIntroReader(shell.roomIntroReaderHost, (isVisible) => {
       this.scene?.setInteractionEnabled(!isVisible)
       if (isVisible) this.emotionPicker.close()
@@ -132,10 +143,31 @@ export class App {
     this.entryScreen.show()
   }
 
+  private lastPhotoArtworkId: string | undefined
+
+  /**
+   * 인증샷: 전시실(작품을 고르면 그 작품과 함께)·방명록 방에서 찍는다. 영상관에서는 찍지 않는다.
+   * 찍은 사진은 폴라로이드(1080×1350)로 만들어 미리보기로 보여 준다. 서버로는 보내지 않는다.
+   */
+  private takePhoto(artworkId?: string): void {
+    if (this.sceneTransitionInProgress) return
+    const photo = this.guestbookScene ? this.guestbookScene.capturePhoto() : this.scene?.capturePhoto(artworkId)
+    if (!photo) return
+    this.lastPhotoArtworkId = artworkId
+    this.photoPreview.flash()
+    void this.photoPreview.open(composePhotoCard(photo))
+  }
+
+  /** 📷 버튼은 전시실·방명록 방에서만 (영상관 제외) */
+  private updatePhotoButton(): void {
+    this.photoButton.hidden = !(this.guestbookScene || (this.scene && !this.currentRoomDefinition.cinema))
+  }
+
   private async enterGallery(nickname: string): Promise<void> {
     this.session.setNickname(nickname)
     this.guestbookUi.setNickname(this.session.nickname)
     this.emotionPicker.hide()
+    this.photoButton.hidden = true
     this.entryScreen.hide()
     this.customizerMode = 'entry'
     this.customizer.open('entry', this.customizationStore.state)
@@ -173,6 +205,7 @@ export class App {
       this.scene = scene
       this.loadingScreen.hide()
       this.emotionPicker.show()
+      this.updatePhotoButton()
       this.customizeButton.hidden = false
       this.guestbookUi.showGalleryControls()
       this.roomSwitcher.show(this.currentRoomId)
@@ -184,6 +217,7 @@ export class App {
       this.scene?.dispose()
       this.scene = undefined
       this.emotionPicker.hide()
+      this.photoButton.hidden = true
       this.customizeButton.hidden = true
       this.loadingScreen.showError(() => {
         void this.initializeGallery(showGuide, startAtPortalId, showMinimap)
@@ -230,6 +264,7 @@ export class App {
       )
       this.guestbookScene.start()
       this.guestbookUi.showGuestbookControls()
+      this.updatePhotoButton()
     })
   }
 

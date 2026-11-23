@@ -18,6 +18,8 @@ export interface ExhibitionShell {
   guestbookModalHost: HTMLElement
   sceneTransition: HTMLElement
   toastHost: HTMLElement
+  photoButton: HTMLButtonElement
+  photoPreviewHost: HTMLElement
 }
 
 /** Creates the canvas host plus lightweight DOM layers for the visitor flow. */
@@ -67,6 +69,8 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
           <button class="guide-dialog__confirm" type="button">관람 시작하기</button>
         </section>
       </section>
+      <button class="photo-button" type="button" aria-label="인증샷 찍기" title="인증샷 찍기" hidden>📷</button>
+      <section class="photo-preview" hidden></section>
       <div class="emotion-control" hidden>
         <div class="emotion-control__menu" role="menu" aria-label="감정 표현 선택" hidden>
           <button type="button" role="menuitem" data-emotion="❤️" aria-label="하트">❤️</button>
@@ -111,13 +115,15 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
   const guestbookModalHost = rootElement.querySelector<HTMLElement>('.guestbook-modal')
   const sceneTransition = rootElement.querySelector<HTMLElement>('.scene-transition')
   const toastHost = rootElement.querySelector<HTMLElement>('.guestbook-toast')
+  const photoButton = rootElement.querySelector<HTMLButtonElement>('.photo-button')
+  const photoPreviewHost = rootElement.querySelector<HTMLElement>('.photo-preview')
 
-  if (!canvasHost || !customizerHost || !customizeButton || !entryHost || !emotionHost || !artworkViewerHost || !roomIntroReaderHost || !roomSwitcherHost || !giftShopCardHost || !galleryGuestbookButton || !loadingHost || !minimapHost || !guideHost || !helpButton || !guestbookReturnButton || !guestbookWriteButton || !guestbookModalHost || !sceneTransition || !toastHost) {
+  if (!canvasHost || !customizerHost || !customizeButton || !entryHost || !emotionHost || !artworkViewerHost || !roomIntroReaderHost || !roomSwitcherHost || !giftShopCardHost || !galleryGuestbookButton || !loadingHost || !minimapHost || !guideHost || !helpButton || !guestbookReturnButton || !guestbookWriteButton || !guestbookModalHost || !sceneTransition || !toastHost || !photoButton || !photoPreviewHost) {
     throw new Error('Exhibition UI could not be created.')
   }
 
   return {
     canvasHost, customizerHost, customizeButton, entryHost, emotionHost, artworkViewerHost, roomIntroReaderHost, roomSwitcherHost, giftShopCardHost, galleryGuestbookButton, guideHost, helpButton, loadingHost, minimapHost,
-    guestbookReturnButton, guestbookWriteButton, guestbookModalHost, sceneTransition, toastHost,
+    guestbookReturnButton, guestbookWriteButton, guestbookModalHost, sceneTransition, toastHost, photoButton, photoPreviewHost,
   }
 }

@@ -25,6 +25,7 @@ import { CAMERA_INTERACTION_CONFIG, VISITOR_CAMERA_CONFIG } from './cameras/visi
 import { ExhibitionRoom } from './exhibition/ExhibitionRoom.ts'
 import type { FrogCustomization } from '../characters/customization/types.ts'
 import { ArtworkGallery, type ArtworkInstance } from './exhibition/artworks/ArtworkGallery.ts'
+import { captureArtworkPhoto, captureFreePhoto, type PhotoStage } from '../photo/photoShot.ts'
 import { ALREADY_NEAR_DISTANCE, POPUP_DELAY_AFTER_ARRIVAL } from './exhibition/artworks/artworkConfig.ts'
 import type { ViewingSpot } from './exhibition/artworks/types.ts'
 import { chooseViewingSpot } from './exhibition/artworks/viewingSpots.ts'
@@ -337,6 +338,23 @@ export class ExhibitionScene {
   /** Gallery UI controls the minimap separately from the canvas interaction state. */
   setMinimapVisible(isVisible: boolean): void {
     this.minimap.setVisible(isVisible)
+  }
+
+  /**
+   * 인증샷 (정사각형). artworkId를 주면 그 작품을 정면에서 깨북이와 함께, 없으면 바라보던 방향으로 찍는다.
+   * 영상관에서는 찍지 않는다.
+   */
+  capturePhoto(artworkId?: string): HTMLCanvasElement | undefined {
+    if (this.cinema) return undefined
+    const stage: PhotoStage = {
+      renderer: this.renderer,
+      scene: this.scene,
+      viewCamera: this.thirdPersonCamera.camera,
+      frog: this.character.root,
+      occluders: this.room.getCameraOccluders(),
+    }
+    const artwork = artworkId ? this.artworkGallery.instances.find((item) => item.config.id === artworkId) : undefined
+    return artwork ? captureArtworkPhoto(stage, artwork) : captureFreePhoto(stage)
   }
 
   applyCustomization(customization: FrogCustomization): void {

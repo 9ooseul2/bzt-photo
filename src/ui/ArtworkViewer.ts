@@ -17,8 +17,10 @@ export class ArtworkViewer {
   private readonly stage: HTMLElement
   private readonly title: HTMLElement
   private zoom = 1
+  private current: ArtworkConfig | undefined
 
-  constructor(host: HTMLElement, onVisibilityChange: (isVisible: boolean) => void) {
+  /** onPhoto를 넘기면 작가 이름 아래에 "인증샷 남기기" 버튼이 보인다 */
+  constructor(host: HTMLElement, onVisibilityChange: (isVisible: boolean) => void, onPhoto?: (artwork: ArtworkConfig) => void) {
     this.host = host
     this.onVisibilityChange = onVisibilityChange
     this.host.innerHTML = `
@@ -29,7 +31,7 @@ export class ArtworkViewer {
           <p class="artwork-viewer__message" hidden>이미지를 불러오지 못했습니다</p>
         </div>
         <div class="artwork-viewer__details">
-          <div><h2 id="artwork-viewer-title"></h2><p class="artwork-viewer__artist"></p></div>
+          <div><h2 id="artwork-viewer-title"></h2><p class="artwork-viewer__artist"></p><button class="artwork-viewer__photo" type="button" hidden>📷 인증샷 남기기</button></div>
           <p class="artwork-viewer__comment"></p>
           <button class="artwork-viewer__reset" type="button">원래 크기</button>
         </div>
@@ -53,6 +55,16 @@ export class ArtworkViewer {
     this.stage = stage
     this.title = title
     this.closeButton.addEventListener('click', this.close)
+    const photoButton = host.querySelector<HTMLButtonElement>('.artwork-viewer__photo')
+    if (photoButton && onPhoto) {
+      photoButton.hidden = false
+      photoButton.addEventListener('click', () => {
+        const artwork = this.current
+        if (!artwork) return
+        this.close()
+        onPhoto(artwork)
+      })
+    }
     this.resetButton.addEventListener('click', this.resetView)
     this.host.addEventListener('click', this.handleBackgroundClick)
     this.image.addEventListener('load', this.handleImageLoad)
@@ -74,6 +86,7 @@ export class ArtworkViewer {
       window.addEventListener('keydown', this.handleKeydown)
     }
 
+    this.current = artwork
     this.title.textContent = artwork.title
     this.host.querySelector<HTMLElement>('.artwork-viewer__artist')!.textContent = artwork.artist
     this.host.querySelector<HTMLElement>('.artwork-viewer__comment')!.textContent = artwork.comment ?? '작품에 대한 추가 설명이 없습니다.'
