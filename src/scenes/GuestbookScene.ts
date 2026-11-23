@@ -131,6 +131,12 @@ export class GuestbookScene {
     return this.postits.add(entry)
   }
 
+  /** 벽의 포스트잇을 모두 다시 붙인다 (방명록이 차서 포스트잇 크기가 바뀌었을 때) */
+  replaceEntries(entries: readonly GuestbookEntry[]): void {
+    this.postits.clear()
+    for (const entry of entries) this.postits.add(entry)
+  }
+
   removeEntry(entryId: string): boolean {
     return this.postits.remove(entryId)
   }

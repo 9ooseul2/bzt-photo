@@ -10,7 +10,7 @@ import {
   Vector3,
   type Object3D,
 } from 'three'
-import { GUESTBOOK_POSTIT_SIZE, getSlotTransform } from './GuestbookPlacement.ts'
+import { getSlotTransform } from './GuestbookPlacement.ts'
 import type { GuestbookColor, GuestbookEntry } from './types.ts'
 
 const POSTIT_COLORS: Record<GuestbookColor, string> = {
@@ -24,7 +24,8 @@ const POSTIT_COLORS: Record<GuestbookColor, string> = {
 export class GuestbookPostits {
   readonly group = new Group()
   private readonly entries = new Map<string, GuestbookEntry>()
-  private readonly geometry = new BoxGeometry(GUESTBOOK_POSTIT_SIZE, GUESTBOOK_POSTIT_SIZE, 0.035)
+  /** 포스트잇 크기별 모양 (벽이 차면 크기가 한 단계 작아진다) */
+  private readonly geometries = new Map<number, BoxGeometry>()
   private readonly materials = new Map<GuestbookColor, MeshStandardMaterial>()
   private readonly highlights = new Map<string, { glow: Mesh; label: Sprite; labelMaterial: SpriteMaterial; labelTexture: CanvasTexture; startedAt: number }>()
   private hovered: Group | undefined
@@ -45,8 +46,9 @@ export class GuestbookPostits {
     note.rotation.y = transform.rotationY
     note.rotation.z = this.getTilt(entry.id)
     note.userData.entryId = entry.id
+    note.userData.size = transform.size
 
-    const mesh = new Mesh(this.geometry, this.getMaterial(entry.color))
+    const mesh = new Mesh(this.getGeometry(transform.size), this.getMaterial(entry.color))
     mesh.castShadow = true
     mesh.receiveShadow = true
     mesh.userData.entryId = entry.id
@@ -67,6 +69,14 @@ export class GuestbookPostits {
     }
     this.entries.delete(entryId)
     return true
+  }
+
+  /** 벽의 포스트잇을 모두 떼어낸다 (크기가 바뀌어 처음부터 다시 붙일 때) */
+  clear(): void {
+    for (const entryId of [...this.highlights.keys()]) this.removeHighlight(entryId)
+    this.hovered = undefined
+    this.group.clear()
+    this.entries.clear()
   }
 
   getEntryFromObject(object: Object3D): GuestbookEntry | undefined {
@@ -91,16 +101,17 @@ export class GuestbookPostits {
     const note = this.group.getObjectByName(`guestbook-postit-${entryId}`) as Group | undefined
     if (!note) return
     this.removeHighlight(entryId)
+    const size = (note.userData.size as number | undefined) ?? 0.92
 
     const glow = new Mesh(
-      new BoxGeometry(GUESTBOOK_POSTIT_SIZE * 1.12, GUESTBOOK_POSTIT_SIZE * 1.12, 0.008),
+      new BoxGeometry(size * 1.12, size * 1.12, 0.008),
       new MeshBasicMaterial({ color: '#fff9d5', transparent: true, opacity: 0.42, depthWrite: false }),
     )
     glow.position.z = 0.026
     glow.renderOrder = 1
     note.add(glow)
 
-    const { sprite: label, material: labelMaterial, texture: labelTexture } = this.createNewLabel()
+    const { sprite: label, material: labelMaterial, texture: labelTexture } = this.createNewLabel(size)
     note.add(label)
     this.highlights.set(entryId, { glow, label, labelMaterial, labelTexture, startedAt: now })
   }
@@ -124,8 +135,16 @@ export class GuestbookPostits {
 
   dispose(): void {
     for (const entryId of [...this.highlights.keys()]) this.removeHighlight(entryId)
-    this.geometry.dispose()
+    for (const geometry of this.geometries.values()) geometry.dispose()
     for (const material of this.materials.values()) material.dispose()
+  }
+
+  private getGeometry(size: number): BoxGeometry {
+    const cached = this.geometries.get(size)
+    if (cached) return cached
+    const geometry = new BoxGeometry(size, size, 0.035)
+    this.geometries.set(size, geometry)
+    return geometry
   }
 
   private getMaterial(color: GuestbookColor): MeshStandardMaterial {
@@ -136,7 +155,7 @@ export class GuestbookPostits {
     return material
   }
 
-  private createNewLabel(): { material: SpriteMaterial; sprite: Sprite; texture: CanvasTexture } {
+  private createNewLabel(size: number): { material: SpriteMaterial; sprite: Sprite; texture: CanvasTexture } {
     const canvas = document.createElement('canvas')
     canvas.width = 128
     canvas.height = 52
@@ -156,7 +175,7 @@ export class GuestbookPostits {
     const material = new SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
     const sprite = new Sprite(material)
     sprite.name = 'guestbook-new-label'
-    sprite.position.set(0, GUESTBOOK_POSTIT_SIZE * 0.72, 0.05)
+    sprite.position.set(0, size * 0.72, 0.05)
     sprite.scale.set(0.38, 0.154, 1)
     return { sprite, material, texture }
   }

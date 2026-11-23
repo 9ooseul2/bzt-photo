@@ -9,7 +9,7 @@ import { GuestbookUi } from '../ui/GuestbookUi.ts'
 import { EmotionStateStore } from '../user/EmotionState.ts'
 import { VisitorSession } from '../user/VisitorSession.ts'
 import { GuestbookRepository, GuestbookSaveFailure, type GuestbookSaveError } from '../guestbook/GuestbookRepository.ts'
-import { assignGuestbookPlacements, getFirstAvailablePlacement, GUESTBOOK_CAPACITY } from '../guestbook/GuestbookPlacement.ts'
+import { GUESTBOOK_CAPACITY, layoutGuestbookWall } from '../guestbook/GuestbookPlacement.ts'
 import { SAMPLE_GUESTBOOK_ENTRIES } from '../guestbook/sampleEntries.ts'
 import { preloadGuestbookFont } from '../guestbook/guestbookFont.ts'
 import type { GuestbookColor, GuestbookEntry } from '../guestbook/types.ts'
@@ -47,6 +47,8 @@ export class App {
   private readonly guestbookRepository = new GuestbookRepository()
   /** 지금 방명록 방 벽에 붙어 있는 글 (자리 계산용) */
   private guestbookEntries: GuestbookEntry[] = []
+  /** 지금 벽에 붙은 포스트잇 크기 (방명록이 차면 작아진다) */
+  private guestbookPostitSize = 0
   private readonly giftShopCard: GiftShopCard
   private readonly guestbookUi: GuestbookUi
   private readonly helpButton: HTMLButtonElement
@@ -209,7 +211,8 @@ export class App {
       const saved = await this.guestbookRepository.loadLatest(GUESTBOOK_CAPACITY)
       if (saved === null) this.guestbookUi.toast('방명록을 불러오지 못했어요. 잠시 후 다시 들어와 주세요.')
       this.guestbookEntries = saved && saved.length > 0 ? saved : [...SAMPLE_GUESTBOOK_ENTRIES]
-      const entries = assignGuestbookPlacements(this.guestbookEntries)
+      const { entries, postitSize } = layoutGuestbookWall(this.guestbookEntries)
+      this.guestbookPostitSize = postitSize
       this.guestbookScene = new GuestbookScene(
         this.canvasHost,
         this.session.nickname,
@@ -286,11 +289,6 @@ export class App {
 
   private async createGuestbookEntry(message: string, color: GuestbookColor): Promise<boolean> {
     if (!this.guestbookScene) return false
-    const placement = getFirstAvailablePlacement(assignGuestbookPlacements(this.guestbookEntries))
-    if (!placement) {
-      this.guestbookUi.toast('현재 전시실의 포스트잇 자리가 모두 찼습니다.')
-      return false
-    }
     let saved: GuestbookEntry
     try {
       // 등록하는 순간의 꾸미기 상태를 함께 저장한다 (나중에 꾸미기를 바꿔도 이 글의 개구리는 그대로)
@@ -301,10 +299,18 @@ export class App {
       return false
     }
     // 샘플만 보이던 방이면 샘플을 치우지 않고 그 옆에 붙인다 (다음 입장부터는 실제 글만 보임)
-    const entry: GuestbookEntry = { ...saved, placement }
-    this.guestbookEntries = [...this.guestbookEntries, entry]
-    if (!this.guestbookScene) return true
-    const wasAdded = this.guestbookScene.addEntry(entry)
+    this.guestbookEntries = [...this.guestbookEntries, saved]
+    // 새 글은 가장 마지막에 붙으므로 기존 글의 자리는 그대로다. 단, 벽이 차서 포스트잇 크기가 바뀌면 전부 다시 붙인다.
+    const layout = layoutGuestbookWall(this.guestbookEntries)
+    const entry = layout.entries.find((item) => item.id === saved.id)
+    if (!this.guestbookScene || !entry) return true
+    let wasAdded = true
+    if (layout.postitSize !== this.guestbookPostitSize) {
+      this.guestbookPostitSize = layout.postitSize
+      this.guestbookScene.replaceEntries(layout.entries)
+    } else {
+      wasAdded = this.guestbookScene.addEntry(entry)
+    }
     if (wasAdded) {
       this.guestbookScene.revealEntry(entry)
       this.guestbookUi.toast('방명록이 벽에 붙었어요.')
