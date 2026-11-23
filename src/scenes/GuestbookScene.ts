@@ -16,6 +16,7 @@ import { DestinationMarker } from '../characters/DestinationMarker.ts'
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
 import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
 import { MovementInput } from '../controls/MovementInput.ts'
+import { captureFreePhoto } from '../photo/photoShot.ts'
 import { createFrogVisitorModel, FROG_VISITOR_CONFIG, type FrogVisitorVisual } from '../characters/models/FrogVisitorModel.ts'
 import { GridPathfinder } from '../characters/pathfinding/GridPathfinder.ts'
 import { VisitorOverheadDisplay } from '../characters/VisitorOverheadDisplay.ts'
@@ -177,6 +178,17 @@ export class GuestbookScene {
       this.postits.setHovered(undefined)
       this.portalApproach.cancel()
     }
+  }
+
+  /** 인증샷 (정사각형): 바라보던 방향(방명록 벽, 주변 관람객)을 배경으로 광각으로 찍는다 */
+  capturePhoto(): HTMLCanvasElement {
+    return captureFreePhoto({
+      renderer: this.renderer,
+      scene: this.scene,
+      viewCamera: this.thirdPersonCamera.camera,
+      frog: this.character.root,
+      occluders: this.room.getCameraOccluders(),
+    })
   }
 
   applyCustomization(customization: FrogCustomization): void {

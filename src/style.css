@@ -351,6 +351,45 @@ button {
   background: var(--brand-deep);
 }
 
+.photo-button {
+  position: absolute;
+  z-index: 15;
+  right: clamp(1.1rem, 3vw, 2rem);
+  bottom: calc(clamp(1.1rem, 3vw, 2rem) + 6.3rem);
+  display: grid;
+  width: 2.6rem;
+  height: 2.6rem;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 78%);
+  border-radius: 50%;
+  padding: 0;
+  background: color-mix(in srgb, var(--brand-deep) 82%, transparent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 20%);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.photo-button:hover { background: var(--brand-deep); }
+.photo-button:focus-visible { outline: 3px solid rgb(255 218 134 / 85%); outline-offset: 3px; }
+.photo-flash { position: absolute; z-index: 45; inset: 0; background: #fff; pointer-events: none; animation: photo-flash 420ms ease-out both; }
+@keyframes photo-flash { from { opacity: 0.75; } to { opacity: 0; } }
+.photo-preview { position: absolute; z-index: 44; inset: 0; display: grid; place-items: center; padding: 1rem; }
+.photo-preview__backdrop { position: absolute; inset: 0; background: color-mix(in srgb, var(--brand-deep) 55%, transparent); }
+.photo-preview__sheet { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; width: min(22rem, 100%); max-height: 100%; }
+.photo-preview__close { position: fixed; top: 0.6rem; right: 0.8rem; width: 2.4rem; height: 2.4rem; border: 0; padding: 0; background: transparent; color: #fff; font-size: 1.9rem; line-height: 1; opacity: 0.85; }
+.photo-preview__close:hover { opacity: 1; }
+/* 길게 눌러 저장할 수 있도록 진짜 이미지로 보여 준다 */
+.photo-preview__image { display: block; width: 100%; max-height: calc(100vh - 12rem); max-height: calc(100dvh - 12rem); object-fit: contain; box-shadow: 0 12px 30px rgb(0 0 0 / 35%); transform: rotate(-1deg); -webkit-touch-callout: default; user-select: auto; }
+.photo-preview__inapp { width: 100%; margin: 0; border-radius: 0.5rem; padding: 0.6rem 0.75rem; background: #fff8e1; color: #4a3b10; font-size: 0.74rem; line-height: 1.5; }
+.photo-preview__inapp b { display: block; margin-bottom: 0.1rem; font-size: 0.8rem; }
+.photo-preview__actions { display: flex; gap: 0.5rem; width: 100%; }
+.photo-preview__actions button { flex: 1; border: 1px solid var(--brand-line); border-radius: 0.45rem; padding: 0.7rem 0.4rem; background: var(--surface); color: var(--brand-ink); font-size: 0.82rem; font-weight: 650; }
+.photo-preview__actions button.is-primary { border-color: var(--brand-deep); background: var(--brand-deep); color: var(--surface); }
+.photo-preview__actions button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.photo-preview__hint { min-height: 1em; margin: 0; color: #fff; font-size: 0.74rem; line-height: 1.5; text-align: center; opacity: 0.92; }
+.artwork-viewer__photo { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.6rem; border: 0; border-radius: 999px; padding: 0.32rem 0.7rem; background: var(--brand-deep); color: var(--surface); font-size: 0.72rem; font-weight: 600; }
+.artwork-viewer__photo:hover { background: color-mix(in srgb, var(--brand-deep) 85%, #fff); }
+.artwork-viewer__photo:focus-visible { outline: 2px solid var(--brand-deep); outline-offset: 2px; }
+
 .emotion-control {
   position: absolute;
   z-index: 15;
