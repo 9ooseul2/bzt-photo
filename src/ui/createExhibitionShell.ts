@@ -3,10 +3,9 @@ export interface ExhibitionShell {
   customizerHost: HTMLElement
   customizeButton: HTMLButtonElement
   entryHost: HTMLElement
-  emotionHost: HTMLElement
   artworkViewerHost: HTMLElement
   giftShopCardHost: HTMLElement
-  galleryGuestbookButton: HTMLButtonElement
+  floatingActionsHost: HTMLElement
   guideHost: HTMLElement
   helpButton: HTMLButtonElement
   loadingHost: HTMLElement
@@ -63,9 +62,8 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
             <li>마우스를 드래그하면 주변을 둘러볼 수 있습니다.</li>
             <li>마우스 휠로 시야를 확대하거나 축소할 수 있습니다.</li>
             <li>작품을 클릭하면 큰 화면으로 감상하실 수 있습니다.</li>
-            <li>다른 전시실로 이동하려면 화면 왼쪽의 버튼을 눌러주세요.</li>
-            <li>관람 안내는 오른쪽 아래의 '?' 버튼에서 다시 확인하실 수 있습니다.</li>
-            <li>조용한 관람을 위해 관람객 간 대화는 지원하지 않습니다. 대신 이모지로 감상을 자유롭게 표현해주세요!</li>
+            <li>다른 전시실이나 방명록으로 가려면 왼쪽 위의 '이동' 버튼을 눌러주세요.</li>
+            <li>인증샷, 캐릭터 꾸미기, 관람 안내는 오른쪽 아래의 + 버튼을 누르면 나옵니다.</li>
           </ul>
           <div class="guide-dialog__footer">
             <button class="guide-dialog__dismiss-today" type="button">오늘 그만 보기</button>
@@ -73,23 +71,36 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
           </div>
         </section>
       </section>
-      <button class="photo-button" type="button" aria-label="인증샷 찍기" title="인증샷 찍기" hidden>📷</button>
       <section class="photo-preview" hidden></section>
-      <div class="emotion-control" hidden>
-        <div class="emotion-control__menu" role="menu" aria-label="감정 표현 선택" hidden>
-          <button type="button" role="menuitem" data-emotion="❤️" aria-label="하트">❤️</button>
-          <button type="button" role="menuitem" data-emotion="👏" aria-label="박수">👏</button>
-          <button type="button" role="menuitem" data-emotion="🥹" aria-label="감동">🥹</button>
-        </div>
-        <button class="emotion-control__toggle" type="button" aria-label="감정 표현" aria-expanded="false">❤️</button>
-      </div>
-      <button class="scene-switch scene-switch--guestbook" type="button" hidden>방명록</button>
       <section class="room-switcher" hidden></section>
-      <button class="customize-button" type="button" aria-label="캐릭터 꾸미기" hidden>꾸미기</button>
       <section class="minimap" hidden></section>
-      <button class="scene-switch scene-switch--return" type="button" hidden>전시실로 돌아가기</button>
-      <button class="guestbook-write" type="button" hidden>방명록 남기기</button>
-      <button class="guide-help" type="button" aria-label="관람 안내 다시 보기" hidden>?</button>
+      <button class="scene-switch scene-switch--return" type="button" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+        <span>전시실로 돌아가기</span>
+      </button>
+      <button class="guestbook-write" type="button" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19l1-4L15.5 5.5a2.1 2.1 0 0 1 3 3L9 18z" /><path d="M13.5 7.5l3 3" /></svg>
+        <span>방명록 남기기</span>
+      </button>
+      <div class="floating-actions" hidden>
+        <div class="floating-actions__menu" id="floating-actions-menu" hidden>
+          <button class="floating-actions__item photo-button" type="button" hidden>
+            <span class="floating-actions__label">인증샷</span>
+            <span class="floating-actions__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" /><circle cx="12" cy="12.75" r="3.25" /></svg></span>
+          </button>
+          <button class="floating-actions__item customize-button" type="button" hidden>
+            <span class="floating-actions__label">꾸미기</span>
+            <span class="floating-actions__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l-5 2.5 1.5 4.5 2.5-1V20h8V10l2.5 1L20 6.5 15 4a3 3 0 0 1-6 0z" /></svg></span>
+          </button>
+          <button class="floating-actions__item guide-help" type="button" hidden>
+            <span class="floating-actions__label">관람 안내</span>
+            <span class="floating-actions__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.6" /><path d="M12 16.8v.2" /></svg></span>
+          </button>
+        </div>
+        <button class="floating-actions__toggle" type="button" aria-expanded="false" aria-controls="floating-actions-menu" aria-label="메뉴 열기">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+      </div>
       <section class="guestbook-modal" hidden></section>
       <section class="artwork-viewer" hidden aria-hidden="true"></section>
       <section class="room-intro-reader" hidden aria-hidden="true"></section>
@@ -104,10 +115,9 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
   const customizerHost = rootElement.querySelector<HTMLElement>('.customizer-screen')
   const customizeButton = rootElement.querySelector<HTMLButtonElement>('.customize-button')
   const entryHost = rootElement.querySelector<HTMLElement>('.entry-screen')
-  const emotionHost = rootElement.querySelector<HTMLElement>('.emotion-control')
   const artworkViewerHost = rootElement.querySelector<HTMLElement>('.artwork-viewer')
   const giftShopCardHost = rootElement.querySelector<HTMLElement>('.gift-shop-card')
-  const galleryGuestbookButton = rootElement.querySelector<HTMLButtonElement>('.scene-switch--guestbook')
+  const floatingActionsHost = rootElement.querySelector<HTMLElement>('.floating-actions')
   const loadingHost = rootElement.querySelector<HTMLElement>('.loading-screen')
   const minimapHost = rootElement.querySelector<HTMLElement>('.minimap')
   const roomIntroReaderHost = rootElement.querySelector<HTMLElement>('.room-intro-reader')
@@ -122,12 +132,12 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
   const photoButton = rootElement.querySelector<HTMLButtonElement>('.photo-button')
   const photoPreviewHost = rootElement.querySelector<HTMLElement>('.photo-preview')
 
-  if (!canvasHost || !customizerHost || !customizeButton || !entryHost || !emotionHost || !artworkViewerHost || !roomIntroReaderHost || !roomSwitcherHost || !giftShopCardHost || !galleryGuestbookButton || !loadingHost || !minimapHost || !guideHost || !helpButton || !guestbookReturnButton || !guestbookWriteButton || !guestbookModalHost || !sceneTransition || !toastHost || !photoButton || !photoPreviewHost) {
+  if (!canvasHost || !customizerHost || !customizeButton || !entryHost || !artworkViewerHost || !roomIntroReaderHost || !roomSwitcherHost || !giftShopCardHost || !floatingActionsHost || !loadingHost || !minimapHost || !guideHost || !helpButton || !guestbookReturnButton || !guestbookWriteButton || !guestbookModalHost || !sceneTransition || !toastHost || !photoButton || !photoPreviewHost) {
     throw new Error('Exhibition UI could not be created.')
   }
 
   return {
-    canvasHost, customizerHost, customizeButton, entryHost, emotionHost, artworkViewerHost, roomIntroReaderHost, roomSwitcherHost, giftShopCardHost, galleryGuestbookButton, guideHost, helpButton, loadingHost, minimapHost,
+    canvasHost, customizerHost, customizeButton, entryHost, artworkViewerHost, roomIntroReaderHost, roomSwitcherHost, giftShopCardHost, floatingActionsHost, guideHost, helpButton, loadingHost, minimapHost,
     guestbookReturnButton, guestbookWriteButton, guestbookModalHost, sceneTransition, toastHost, photoButton, photoPreviewHost,
   }
 }

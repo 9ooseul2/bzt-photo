@@ -3,7 +3,6 @@ import { GUESTBOOK_COLOR_VALUES, GUESTBOOK_COLORS, type GuestbookColor, type Gue
 import { FrogPreview } from './FrogPreview.ts'
 
 interface GuestbookUiElements {
-  galleryButton: HTMLButtonElement
   modalHost: HTMLElement
   returnButton: HTMLButtonElement
   toastHost: HTMLElement
@@ -11,7 +10,6 @@ interface GuestbookUiElements {
 }
 
 interface GuestbookUiCallbacks {
-  onEnter: () => void
   onLeave: () => void
   onModalVisibility: (isVisible: boolean) => void
   onSubmit: (message: string, color: GuestbookColor) => Promise<boolean>
@@ -41,21 +39,18 @@ export class GuestbookUi {
   constructor(elements: GuestbookUiElements, callbacks: GuestbookUiCallbacks) {
     this.elements = elements
     this.callbacks = callbacks
-    elements.galleryButton.addEventListener('click', callbacks.onEnter)
     elements.returnButton.addEventListener('click', callbacks.onLeave)
     elements.writeButton.addEventListener('click', () => this.showWrite())
   }
 
   showGalleryControls(): void {
     this.close()
-    this.elements.galleryButton.hidden = false
     this.elements.returnButton.hidden = true
     this.elements.writeButton.hidden = true
   }
 
   showGuestbookControls(): void {
     this.close()
-    this.elements.galleryButton.hidden = true
     this.elements.returnButton.hidden = false
     this.elements.writeButton.hidden = false
   }
