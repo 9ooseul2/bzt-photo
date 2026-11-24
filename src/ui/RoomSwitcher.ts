@@ -3,7 +3,12 @@ import { formatOccupancy, type OccupancyProvider } from '../services/occupancy.t
 
 interface RoomSwitcherCallbacks {
   onSelect: (roomId: string) => void
+  /** 메뉴 맨 아래 '방명록' 항목 */
+  onGuestbook: () => void
 }
+
+/** 방명록 항목의 data-room-id (포커스 복원용, 실제 전시실 id와 겹치지 않게) */
+const GUESTBOOK_ITEM_ID = '__guestbook'
 
 /** Accessible room menu, kept independent from Three.js scene lifetime. */
 export class RoomSwitcher {
@@ -13,6 +18,7 @@ export class RoomSwitcher {
   private readonly menu: HTMLElement
   private readonly occupancyProvider: OccupancyProvider
   private readonly onSelect: (roomId: string) => void
+  private readonly onGuestbook: () => void
   private readonly rooms: readonly ExhibitionRoomDefinition[]
   private readonly unsubscribe: () => void
 
@@ -26,9 +32,13 @@ export class RoomSwitcher {
     this.rooms = rooms
     this.occupancyProvider = occupancyProvider
     this.onSelect = callbacks.onSelect
+    this.onGuestbook = callbacks.onGuestbook
     this.host.innerHTML = `
-      <button class="room-switcher__toggle" type="button" aria-haspopup="menu" aria-expanded="false">다른 전시실로 이동하기</button>
-      <div class="room-switcher__menu" role="menu" aria-label="다른 전시실로 이동하기" hidden></div>
+      <button class="room-switcher__toggle" type="button" aria-haspopup="menu" aria-expanded="false">
+        <span>이동</span>
+        <svg class="room-switcher__chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      <div class="room-switcher__menu" role="menu" aria-label="이동할 곳" hidden></div>
     `
     const button = host.querySelector<HTMLButtonElement>('.room-switcher__toggle')
     const menu = host.querySelector<HTMLElement>('.room-switcher__menu')
@@ -72,7 +82,7 @@ export class RoomSwitcher {
 
   private readonly render = (): void => {
     const activeElement = document.activeElement
-    this.menu.replaceChildren(...this.rooms.map((room) => {
+    const roomItems = this.rooms.map((room) => {
       const isCurrent = room.id === this.currentRoomId
       const item = document.createElement('button')
       item.className = 'room-switcher__item'
@@ -95,7 +105,18 @@ export class RoomSwitcher {
         this.onSelect(room.id)
       })
       return item
-    }))
+    })
+    const guestbookItem = document.createElement('button')
+    guestbookItem.className = 'room-switcher__item room-switcher__item--guestbook'
+    guestbookItem.type = 'button'
+    guestbookItem.setAttribute('role', 'menuitem')
+    guestbookItem.dataset.roomId = GUESTBOOK_ITEM_ID
+    guestbookItem.textContent = '방명록'
+    guestbookItem.addEventListener('click', () => {
+      this.close(false)
+      this.onGuestbook()
+    })
+    this.menu.replaceChildren(...roomItems, guestbookItem)
     if (activeElement instanceof HTMLElement && activeElement.dataset.roomId) {
       this.menu.querySelector<HTMLElement>(`[data-room-id="${activeElement.dataset.roomId}"]`)?.focus()
     }
