@@ -14,6 +14,7 @@ import {
 } from 'three'
 import { DestinationMarker } from '../characters/DestinationMarker.ts'
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
+import { JumpButton } from '../controls/JumpButton.ts'
 import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
 import { MovementInput } from '../controls/MovementInput.ts'
 import { VirtualJoystick } from '../controls/VirtualJoystick.ts'
@@ -54,6 +55,7 @@ export class GuestbookScene {
   private readonly directMovementCameraDirection = new Vector3()
   private readonly keyboardControls: KeyboardMovementControls
   private readonly joystick: VirtualJoystick
+  private readonly jumpButton: JumpButton
   private readonly movementInput = new MovementInput()
   private wasDirectMoving = false
   private readonly emotionState: EmotionStateStore
@@ -105,7 +107,7 @@ export class GuestbookScene {
       nicknameHeight: FROG_VISITOR_CONFIG.nicknameHeight,
       emoteHeight: FROG_VISITOR_CONFIG.emoteHeight,
     })
-    this.character.root.add(this.overheadDisplay.group)
+    this.character.body.add(this.overheadDisplay.group)
     this.pathfinder = new GridPathfinder(this.room.navigation, this.character.collisionRadius)
     this.character.setCollisionCheck((point) => this.pathfinder.canStandAt(point))
     this.postits = new GuestbookPostits(entries)
@@ -120,8 +122,9 @@ export class GuestbookScene {
     this.createLighting()
     this.thirdPersonCamera.update(this.character.getCameraTarget(), this.room.getCameraOccluders(), this.room.getCameraBounds())
     this.registerPointerControls()
-    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
+    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled, () => this.character.jump())
     this.joystick = new VirtualJoystick(this.container, this.movementInput)
+    this.jumpButton = new JumpButton(this.container, () => this.character.jump())
     this.resize()
     window.addEventListener('resize', this.resize)
   }
@@ -158,13 +161,14 @@ export class GuestbookScene {
     window.removeEventListener('resize', this.resize)
     this.keyboardControls.dispose()
     this.joystick.dispose()
+    this.jumpButton.dispose()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('pointercancel', this.onPointerCancel)
     this.canvas.removeEventListener('contextmenu', this.preventContextMenu)
     this.canvas.removeEventListener('wheel', this.onWheel)
-    this.character.root.remove(this.overheadDisplay.group)
+    this.character.body.remove(this.overheadDisplay.group)
     this.overheadDisplay.dispose()
     this.frogVisual.dispose()
     this.destinationMarker.dispose()
@@ -178,6 +182,7 @@ export class GuestbookScene {
     this.interactionEnabled = enabled
     this.character.setMovementEnabled(enabled)
     this.joystick.setEnabled(enabled)
+    this.jumpButton.setEnabled(enabled)
     this.canvas.style.cursor = enabled ? 'default' : ''
     if (!enabled) {
       this.postits.setHovered(undefined)

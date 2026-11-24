@@ -14,6 +14,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import { VisitorCharacter } from '../characters/VisitorCharacter.ts'
+import { JumpButton } from '../controls/JumpButton.ts'
 import { KeyboardMovementControls } from '../controls/KeyboardMovementControls.ts'
 import { MovementInput } from '../controls/MovementInput.ts'
 import { VirtualJoystick } from '../controls/VirtualJoystick.ts'
@@ -96,6 +97,7 @@ export class ExhibitionScene {
   private readonly directMovementCameraDirection = new Vector3()
   private readonly keyboardControls: KeyboardMovementControls
   private readonly joystick: VirtualJoystick
+  private readonly jumpButton: JumpButton
   private readonly movementInput = new MovementInput()
   private wasDirectMoving = false
   private readonly frogVisual: FrogVisitorVisual
@@ -191,7 +193,7 @@ export class ExhibitionScene {
       nicknameHeight: FROG_VISITOR_CONFIG.nicknameHeight,
       emoteHeight: FROG_VISITOR_CONFIG.emoteHeight,
     })
-    this.character.root.add(this.overheadDisplay.group)
+    this.character.body.add(this.overheadDisplay.group)
     this.pathfinder = new GridPathfinder(this.room.navigation, this.character.collisionRadius)
     this.character.setCollisionCheck((point) => this.pathfinder.canStandAt(point))
     this.destinationMarker = new DestinationMarker()
@@ -252,12 +254,12 @@ export class ExhibitionScene {
       this.room.getCameraBounds(),
     )
     this.registerPointerControls()
-    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled)
+    this.keyboardControls = new KeyboardMovementControls(this.movementInput, () => this.interactionEnabled, this.onSpaceKey)
     this.joystick = new VirtualJoystick(this.container, this.movementInput)
+    this.jumpButton = new JumpButton(this.container, () => this.character.jump())
     if (roomDefinition.cinema) {
       this.roomNotice = new RoomNotice(this.container, roomDefinition.cinema.entryNotice)
       this.seatKeyHint = new SeatKeyHint(this.container)
-      window.addEventListener('keydown', this.onSeatKey)
     }
     this.resize()
     window.addEventListener('resize', this.resize)
@@ -279,7 +281,7 @@ export class ExhibitionScene {
     window.removeEventListener('resize', this.resize)
     this.keyboardControls.dispose()
     this.joystick.dispose()
-    window.removeEventListener('keydown', this.onSeatKey)
+    this.jumpButton.dispose()
     this.roomNotice?.dispose()
     this.seatKeyHint?.dispose()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
@@ -289,7 +291,7 @@ export class ExhibitionScene {
     this.canvas.removeEventListener('pointermove', this.onArtworkHover)
     this.canvas.removeEventListener('contextmenu', this.preventContextMenu)
     this.canvas.removeEventListener('wheel', this.onWheel)
-    this.character.root.remove(this.overheadDisplay.group)
+    this.character.body.remove(this.overheadDisplay.group)
     this.overheadDisplay.dispose()
     this.frogVisual.dispose()
     this.destinationMarker.dispose()
@@ -313,6 +315,7 @@ export class ExhibitionScene {
     this.interactionEnabled = enabled
     this.character.setMovementEnabled(enabled)
     this.joystick.setEnabled(enabled)
+    this.jumpButton.setEnabled(enabled)
 
     if (!enabled) {
       this.cancelPendingViewing()
@@ -721,22 +724,21 @@ export class ExhibitionScene {
     hint.showAt(((this.seatHintPosition.x + 1) / 2) * clientWidth, ((1 - this.seatHintPosition.y) / 2) * clientHeight, '앉기')
   }
 
-  /** Space: 안내가 떠 있는 소파에 앉거나, 앉아 있으면 일어난다 */
-  private readonly onSeatKey = (event: KeyboardEvent): void => {
-    if (event.code !== 'Space' || event.repeat) return
-    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
-    // 입력칸·버튼에 포커스가 있을 때는 그쪽 동작을 우선한다
-    if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, button, a, [contenteditable="true"]')) return
+  /**
+   * Space: 앉아 있으면 일어나고, "Space 앉기" 안내가 떠 있으면 그 소파에 앉고, 그 밖에는 점프한다.
+   * (입력칸·Tab 으로 고른 버튼에서 누른 Space 는 KeyboardMovementControls 가 미리 걸러 낸다.)
+   */
+  private readonly onSpaceKey = (): void => {
     if (!this.interactionEnabled) return
     if (this.seatedAt) {
-      event.preventDefault()
       this.standUp()
       return
     }
     if (this.seatKeyTarget) {
-      event.preventDefault()
       this.startSeating(this.seatKeyTarget)
+      return
     }
+    this.character.jump()
   }
 
   private cancelPendingSeat(): void {

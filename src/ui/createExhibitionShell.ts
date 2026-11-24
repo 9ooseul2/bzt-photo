@@ -57,8 +57,8 @@ export function createExhibitionShell(rootElement: HTMLElement): ExhibitionShell
           <h2 id="guide-title">관람 안내</h2>
           <ul class="guide-dialog__list">
             <li>이동하고 싶은 위치의 바닥을 클릭해주세요.</li>
-            <li class="guide-dialog__item--keyboard">키보드 방향키나 W·A·S·D 키로 직접 걸어 다닐 수도 있습니다. Shift를 함께 누르면 달려요.</li>
-            <li class="guide-dialog__item--touch">왼쪽 아래 조이스틱으로 직접 걸어 다닐 수도 있습니다. 끝까지 밀면 달려요.</li>
+            <li class="guide-dialog__item--keyboard">키보드 방향키나 W·A·S·D 키로 직접 걸어 다닐 수도 있습니다. Shift를 함께 누르면 달리고, Space를 누르면 점프해요.</li>
+            <li class="guide-dialog__item--touch">왼쪽 아래 조이스틱으로 직접 걸어 다닐 수도 있습니다. 끝까지 밀면 달리고, 오른쪽 아래 ↑ 버튼을 누르면 점프해요.</li>
             <li>마우스를 드래그하면 주변을 둘러볼 수 있습니다.</li>
             <li>마우스 휠로 시야를 확대하거나 축소할 수 있습니다.</li>
             <li>작품을 클릭하면 큰 화면으로 감상하실 수 있습니다.</li>
