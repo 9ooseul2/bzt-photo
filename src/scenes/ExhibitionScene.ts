@@ -4,6 +4,7 @@ import {
   Color,
   DirectionalLight,
   HemisphereLight,
+  type Object3D,
   PCFSoftShadowMap,
   Raycaster,
   Scene,
@@ -119,6 +120,8 @@ export class ExhibitionScene {
   private readonly roomProps: RoomProps
   private readonly scene = new Scene()
   private readonly thirdPersonCamera: ThirdPersonCamera
+  /** Walls/ceiling plus portal frames and furniture, so the camera never passes through them. */
+  private readonly cameraOccluders: readonly Object3D[]
   private readonly trackLighting: TrackLighting | undefined
   /** 영상관일 때만 있음 */
   private readonly cinema: CinemaHall | undefined
@@ -229,6 +232,7 @@ export class ExhibitionScene {
       this.renderer.capabilities.getMaxAnisotropy(),
     )
     this.roomProps = new RoomProps(roomProps, [...this.room.exteriorWalls, ...this.room.partitionWalls])
+    this.cameraOccluders = [...this.room.getCameraOccluders(), this.portals.group, this.roomProps.group]
     this.trackLighting = roomDefinition.lighting?.trackLighting
       ? new TrackLighting(this.room.config, this.artworkGallery, this.roomIntroGallery)
       : undefined
@@ -244,7 +248,7 @@ export class ExhibitionScene {
     this.createLighting(roomDefinition.lighting)
     this.thirdPersonCamera.update(
       this.character.getCameraTarget(),
-      this.room.getCameraOccluders(),
+      this.cameraOccluders,
       this.room.getCameraBounds(),
     )
     this.registerPointerControls()
@@ -845,7 +849,7 @@ export class ExhibitionScene {
     this.emotionState.clearExpired(now)
     this.thirdPersonCamera.update(
       this.character.getCameraTarget(),
-      this.room.getCameraOccluders(),
+      this.cameraOccluders,
       this.room.getCameraBounds(),
       deltaSeconds,
     )

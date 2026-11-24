@@ -27,6 +27,15 @@
   --brand-paper: #e3dfdb;
   --surface: #ffffff;
   --ink-muted: #6e6e6e;
+
+  /*
+   * 아이폰 노치·다이내믹 아일랜드·홈 바를 피하는 여백 (index.html 의 viewport-fit=cover 와 짝).
+   * 화면 가장자리에 붙는 버튼·창은 위치나 여백에 이 값을 더한다. 해당 없는 기기와 PC 에서는 0.
+   */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 /*
@@ -65,13 +74,19 @@ body,
 #app {
   width: 100%;
   min-width: 320px;
-  min-height: 100%;
+  height: 100%;
   margin: 0;
 }
 
+/*
+ * 문서 자체는 스크롤되지 않게 고정한다.
+ * iOS Safari 에서 100vh 는 주소창·탭바가 숨었을 때의 높이라 실제 보이는 화면보다 크다.
+ * 그만큼 페이지가 밀려 올라가 위쪽 버튼이 시계·다이내믹 아일랜드 아래로 숨고 아래가 잘렸다.
+ */
+html,
 body {
-  min-height: 100vh;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button,
@@ -92,8 +107,10 @@ button {
 
 .exhibition-app {
   position: relative;
-  min-height: 100svh;
   height: 100vh;
+  /* 지금 실제로 보이는 화면 높이 (주소창·탭바 제외). 지원 안 하는 브라우저는 위 100vh */
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .scene-canvas {
@@ -115,7 +132,7 @@ button {
   z-index: 10;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding: calc(1.5rem + var(--safe-top)) calc(1.5rem + var(--safe-right)) calc(1.5rem + var(--safe-bottom)) calc(1.5rem + var(--safe-left));
   background: var(--brand-paper);
 }
 
@@ -227,7 +244,7 @@ button {
   z-index: 20;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding: calc(1.5rem + var(--safe-top)) calc(1.5rem + var(--safe-right)) calc(1.5rem + var(--safe-bottom)) calc(1.5rem + var(--safe-left));
   background: var(--brand-paper);
 }
 
@@ -266,7 +283,7 @@ button {
   z-index: 30;
   display: grid;
   place-items: center;
-  padding: 1.25rem;
+  padding: calc(1.25rem + var(--safe-top)) calc(1.25rem + var(--safe-right)) calc(1.25rem + var(--safe-bottom)) calc(1.25rem + var(--safe-left));
 }
 
 .guide-layer__backdrop {
@@ -279,6 +296,9 @@ button {
   position: relative;
   z-index: 1;
   width: min(100%, 35rem);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--brand-line);
   border-radius: 0.8rem;
   padding: clamp(1.7rem, 4vw, 2.4rem);
@@ -360,13 +380,13 @@ button {
 
 .photo-flash { position: absolute; z-index: 45; inset: 0; background: #fff; pointer-events: none; animation: photo-flash 420ms ease-out both; }
 @keyframes photo-flash { from { opacity: 0.75; } to { opacity: 0; } }
-.photo-preview { position: absolute; z-index: 44; inset: 0; display: grid; place-items: center; padding: 1rem; }
+.photo-preview { position: absolute; z-index: 44; inset: 0; display: grid; place-items: center; padding: calc(1rem + var(--safe-top)) calc(1rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(1rem + var(--safe-left)); }
 .photo-preview__backdrop { position: absolute; inset: 0; background: color-mix(in srgb, var(--brand-deep) 55%, transparent); }
 .photo-preview__sheet { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; width: min(22rem, 100%); max-height: 100%; }
-.photo-preview__close { position: fixed; top: 0.6rem; right: 0.8rem; width: 2.4rem; height: 2.4rem; border: 0; padding: 0; background: transparent; color: #fff; font-size: 1.9rem; line-height: 1; opacity: 0.85; }
+.photo-preview__close { position: fixed; top: calc(0.6rem + var(--safe-top)); right: calc(0.8rem + var(--safe-right)); width: 2.4rem; height: 2.4rem; border: 0; padding: 0; background: transparent; color: #fff; font-size: 1.9rem; line-height: 1; opacity: 0.85; }
 .photo-preview__close:hover { opacity: 1; }
 /* 길게 눌러 저장할 수 있도록 진짜 이미지로 보여 준다 */
-.photo-preview__image { display: block; width: 100%; max-height: calc(100vh - 12rem); max-height: calc(100dvh - 12rem); object-fit: contain; box-shadow: 0 12px 30px rgb(0 0 0 / 35%); transform: rotate(-1deg); -webkit-touch-callout: default; user-select: auto; }
+.photo-preview__image { display: block; width: 100%; max-height: calc(100vh - 12rem); max-height: calc(100dvh - 12rem - var(--safe-top) - var(--safe-bottom)); object-fit: contain; box-shadow: 0 12px 30px rgb(0 0 0 / 35%); transform: rotate(-1deg); -webkit-touch-callout: default; user-select: auto; }
 .photo-preview__inapp { width: 100%; margin: 0; border-radius: 0.5rem; padding: 0.6rem 0.75rem; background: #fff8e1; color: #4a3b10; font-size: 0.74rem; line-height: 1.5; }
 .photo-preview__inapp b { display: block; margin-bottom: 0.1rem; font-size: 0.8rem; }
 .photo-preview__actions { display: flex; gap: 0.5rem; width: 100%; }
@@ -401,15 +421,15 @@ button {
 }
 
 .scene-switch--return {
-  top: clamp(1.1rem, 3vw, 2rem);
-  left: clamp(1.1rem, 3vw, 2rem);
+  top: calc(clamp(1.1rem, 3vw, 2rem) + var(--safe-top));
+  left: calc(clamp(1.1rem, 3vw, 2rem) + var(--safe-left));
 }
 
 .room-switcher {
   position: absolute;
   z-index: 15;
-  top: clamp(1.1rem, 3vw, 2rem);
-  left: clamp(1.1rem, 3vw, 2rem);
+  top: calc(clamp(1.1rem, 3vw, 2rem) + var(--safe-top));
+  left: calc(clamp(1.1rem, 3vw, 2rem) + var(--safe-left));
   width: max-content;
 }
 
@@ -485,8 +505,8 @@ button {
 .minimap {
   position: absolute;
   z-index: 15;
-  top: clamp(1.1rem, 3vw, 2rem);
-  right: clamp(1.1rem, 3vw, 2rem);
+  top: calc(clamp(1.1rem, 3vw, 2rem) + var(--safe-top));
+  right: calc(clamp(1.1rem, 3vw, 2rem) + var(--safe-right));
   display: grid;
   grid-template-rows: 160px auto;
   width: 160px;
@@ -515,7 +535,7 @@ button {
   text-shadow: 0 1px 2px color-mix(in srgb, var(--brand-deep) 88%, transparent), 0 0 5px color-mix(in srgb, var(--brand-deep) 38%, transparent);
 }
 
-.customizer-screen { position: absolute; z-index: 60; inset: 0; overflow: auto; padding: clamp(1rem, 3vw, 2.5rem); background: var(--brand-paper); color: var(--brand-ink); }
+.customizer-screen { position: absolute; z-index: 60; inset: 0; overflow: auto; overscroll-behavior: contain; padding: calc(clamp(1rem, 3vw, 2.5rem) + var(--safe-top)) calc(clamp(1rem, 3vw, 2.5rem) + var(--safe-right)) calc(clamp(1rem, 3vw, 2.5rem) + var(--safe-bottom)) calc(clamp(1rem, 3vw, 2.5rem) + var(--safe-left)); background: var(--brand-paper); color: var(--brand-ink); }
 .customizer-screen__panel { width: min(100%, 70rem); min-height: 100%; margin: 0 auto; display: grid; grid-template-rows: auto 1fr auto; }
 .customizer-screen__header { margin-bottom: 1rem; }.customizer-screen__header p { margin: 0 0 .4rem; color: var(--ink-muted); font-size: .7rem; font-weight: 700; letter-spacing: .14em; }.customizer-screen__header h1 { margin: 0; font-size: clamp(1.65rem, 3vw, 2.5rem); letter-spacing: -.06em; }.customizer-screen__header span { display:block; margin-top:.55rem; color:var(--ink-muted); font-size:.9rem; }
 .customizer-screen__body { display:grid; grid-template-columns:minmax(18rem,.9fr) minmax(24rem,1.25fr); gap:clamp(1.1rem,3vw,2.5rem); align-items:stretch; }
@@ -534,7 +554,7 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: clamp(1rem, 3vw, 2rem);
+  padding: calc(clamp(1rem, 3vw, 2rem) + var(--safe-top)) calc(clamp(1rem, 3vw, 2rem) + var(--safe-right)) calc(clamp(1rem, 3vw, 2rem) + var(--safe-bottom)) calc(clamp(1rem, 3vw, 2rem) + var(--safe-left));
   background: color-mix(in srgb, var(--brand-deep) 68%, transparent);
 }
 
@@ -543,7 +563,7 @@ button {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   width: min(100%, 62rem);
-  height: min(84svh, 46rem);
+  height: min(84svh, 46rem, 100%);
   overflow: hidden;
   border: 1px solid var(--brand-line);
   border-radius: 0.75rem;
@@ -662,7 +682,7 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: clamp(1rem, 3vw, 2rem);
+  padding: calc(clamp(1rem, 3vw, 2rem) + var(--safe-top)) calc(clamp(1rem, 3vw, 2rem) + var(--safe-right)) calc(clamp(1rem, 3vw, 2rem) + var(--safe-bottom)) calc(clamp(1rem, 3vw, 2rem) + var(--safe-left));
   background: color-mix(in srgb, var(--brand-deep) 58%, transparent);
   animation: room-intro-reader-fade-in 140ms ease-out;
 }
@@ -676,7 +696,7 @@ button {
   position: relative;
   box-sizing: border-box;
   width: min(100%, 42rem);
-  max-height: min(82svh, 48rem);
+  max-height: min(82svh, 48rem, 100%);
   overflow: auto;
   border: 1px solid var(--brand-line);
   border-radius: 0.75rem;
@@ -758,7 +778,7 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 1.25rem;
+  padding: calc(1.25rem + var(--safe-top)) calc(1.25rem + var(--safe-right)) calc(1.25rem + var(--safe-bottom)) calc(1.25rem + var(--safe-left));
   background: color-mix(in srgb, var(--brand-deep) 48%, transparent);
 }
 
@@ -830,7 +850,7 @@ button {
 
 @media (max-width: 640px) {
   .artwork-viewer__dialog {
-    height: min(88svh, 46rem);
+    height: min(88svh, 46rem, 100%);
   }
 
   .artwork-viewer__details {
@@ -889,7 +909,7 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 1.25rem;
+  padding: calc(1.25rem + var(--safe-top)) calc(1.25rem + var(--safe-right)) calc(1.25rem + var(--safe-bottom)) calc(1.25rem + var(--safe-left));
 }
 
 .guestbook-modal__backdrop {
@@ -1067,14 +1087,14 @@ button {
   .guestbook-card__message { max-height: calc(var(--line) * 5); }
   .guestbook-card__input { height: calc(var(--line) * 4); }
 }
-.guestbook-toast { position: absolute; z-index: 35; bottom: 5rem; left: 50%; margin: 0; transform: translateX(-50%); border-radius: 0.45rem; padding: 0.65rem 0.9rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.83rem; box-shadow: 0 5px 16px rgb(0 0 0 / 18%); }
-.room-notice { position: absolute; z-index: 35; top: 1.5rem; left: 50%; max-width: calc(100% - 2rem); margin: 0; transform: translateX(-50%); border-radius: 0.45rem; padding: 0.65rem 1rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.83rem; text-align: center; box-shadow: 0 5px 16px rgb(0 0 0 / 18%); pointer-events: none; animation: room-notice-in 260ms ease both; transition: opacity 450ms ease; }
+.guestbook-toast { position: absolute; z-index: 35; bottom: calc(5rem + var(--safe-bottom)); left: 50%; margin: 0; transform: translateX(-50%); border-radius: 0.45rem; padding: 0.65rem 0.9rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.83rem; box-shadow: 0 5px 16px rgb(0 0 0 / 18%); }
+.room-notice { position: absolute; z-index: 35; top: calc(1.5rem + var(--safe-top)); left: 50%; max-width: calc(100% - 2rem); margin: 0; transform: translateX(-50%); border-radius: 0.45rem; padding: 0.65rem 1rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.83rem; text-align: center; box-shadow: 0 5px 16px rgb(0 0 0 / 18%); pointer-events: none; animation: room-notice-in 260ms ease both; transition: opacity 450ms ease; }
 .room-notice--hiding { opacity: 0; }
 @keyframes room-notice-in { from { opacity: 0; transform: translate(-50%, -0.4rem); } to { opacity: 1; transform: translate(-50%, 0); } }
-@media (max-width: 680px) { .room-notice { top: auto; bottom: 5rem; } }
+@media (max-width: 680px) { .room-notice { top: auto; bottom: calc(5rem + var(--safe-bottom)); } }
 .seat-key-hint { position: absolute; z-index: 30; display: flex; align-items: center; gap: 0.4rem; transform: translate(-50%, -100%); border-radius: 999px; padding: 0.35rem 0.75rem 0.35rem 0.4rem; background: color-mix(in srgb, var(--brand-deep) 88%, transparent); color: var(--surface); font-size: 0.8rem; white-space: nowrap; box-shadow: 0 4px 12px rgb(0 0 0 / 25%); pointer-events: none; }
 .seat-key-hint kbd { border: 1px solid rgb(255 255 255 / 55%); border-radius: 0.3rem; padding: 0.05rem 0.4rem; background: rgb(255 255 255 / 12%); font: inherit; font-size: 0.72rem; }
-.seat-key-hint--docked { bottom: 5rem; left: 50%; transform: translateX(-50%); }
+.seat-key-hint--docked { bottom: calc(5rem + var(--safe-bottom)); left: 50%; transform: translateX(-50%); }
 .scene-transition { position: absolute; z-index: 50; inset: 0; background: var(--brand-paper); opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
 .scene-transition--visible { opacity: 1; }
 
@@ -1099,7 +1119,10 @@ button {
 }
 
 @media (max-width: 680px) {
-  .customizer-screen__body { grid-template-columns:1fr; }.customizer-preview { order:-1; min-height:20rem; }.customizer-preview__canvas { min-height:19rem; }.inventory-slot__cards { grid-template-columns:repeat(4,minmax(3.5rem,1fr)); }.inventory-slot__cards--three { grid-template-columns:repeat(3,minmax(3.5rem,1fr)); }.customizer-screen__footer { position:sticky; bottom:0; background:var(--brand-paper); }
+  .customizer-screen__body { grid-template-columns:1fr; }.customizer-preview { order:-1; min-height:20rem; }.customizer-preview__canvas { min-height:19rem; }.inventory-slot__cards { grid-template-columns:repeat(4,minmax(3.5rem,1fr)); }.inventory-slot__cards--three { grid-template-columns:repeat(3,minmax(3.5rem,1fr)); }.customizer-screen__footer { position:sticky; bottom:0; z-index:3; background:var(--brand-paper); }
+  /* 하단 버튼이 화면 맨 아래에 딱 붙도록: 스크롤 영역의 아래 여백을 없애고, 그만큼(+ 홈 바 여백)을 버튼 영역 배경으로 채운다 */
+  .customizer-screen { padding-bottom:0; }
+  .customizer-screen__footer { margin-bottom:0; padding-bottom:calc(1rem + var(--safe-bottom)); box-shadow:0 -10px 16px -12px color-mix(in srgb, var(--brand-ink) 25%, transparent); }
 }
 
 /* 가상 조이스틱 (TODO 3-2): 터치 기기에서만 왼쪽 아래에 보인다. 끝까지 밀면 달리기. */
