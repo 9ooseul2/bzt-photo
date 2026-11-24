@@ -1175,6 +1175,51 @@ button {
 }
 .virtual-joystick[hidden] { display: none !important; }
 
+/* 점프 버튼: 터치 기기에서만, 오른쪽 아래 + 버튼 바로 위에 보인다. (PC 는 Space 키) */
+.jump-button {
+  position: absolute;
+  z-index: 15;
+  right: calc(clamp(1.1rem, 3vw, 2rem) + env(safe-area-inset-right, 0px));
+  bottom: calc(clamp(1.1rem, 3vw, 2rem) + env(safe-area-inset-bottom, 0px) + 3.25rem + 0.8rem);
+  display: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  place-items: center;
+  border: 1.5px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  padding: 0;
+  background: color-mix(in srgb, var(--brand-deep) 22%, transparent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
+  color: var(--surface);
+  opacity: 0.72;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 120ms ease, transform 90ms ease, background-color 90ms ease;
+}
+.jump-button svg {
+  width: 1.45rem;
+  height: 1.45rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+.jump-button--pressed {
+  opacity: 1;
+  background: color-mix(in srgb, var(--brand-deep) 82%, transparent);
+  transform: scale(0.92);
+}
+@media (pointer: coarse) {
+  .jump-button { display: grid; }
+}
+.jump-button[hidden] { display: none !important; }
+/* + 메뉴를 펼치면 그 자리를 메뉴가 쓰므로 잠시 숨긴다 */
+body:has(.floating-actions--open) .jump-button { visibility: hidden; }
+
 /* ── 화면 위 버튼 아이콘 (선 아이콘) ── */
 .scene-switch svg,
 .guestbook-write svg,
