@@ -2,7 +2,7 @@ import { ExhibitionScene } from '../scenes/ExhibitionScene.ts'
 import { GuestbookScene } from '../scenes/GuestbookScene.ts'
 import { createExhibitionShell } from '../ui/createExhibitionShell.ts'
 import { EntryScreen } from '../ui/EntryScreen.ts'
-import { EmotionPicker } from '../ui/EmotionPicker.ts'
+import { FloatingActions } from '../ui/FloatingActions.ts'
 import { LoadingScreen } from '../ui/LoadingScreen.ts'
 import { ViewingGuide } from '../ui/ViewingGuide.ts'
 import { GuestbookUi } from '../ui/GuestbookUi.ts'
@@ -43,7 +43,7 @@ export class App {
   private readonly customizationStore = new FrogCustomizationStore()
   private customizerMode: 'edit' | 'entry' = 'entry'
   private readonly entryScreen: EntryScreen
-  private readonly emotionPicker: EmotionPicker
+  private readonly floatingActions: FloatingActions
   private readonly emotionState = new EmotionStateStore()
   private readonly artworkViewer: ArtworkViewer
   private readonly guestbookRepository = new GuestbookRepository()
@@ -81,30 +81,30 @@ export class App {
       shell.roomSwitcherHost,
       EXHIBITION_ROOMS,
       this.occupancyProvider,
-      { onSelect: (roomId) => { void this.moveToRoom(roomId) } },
+      {
+        onSelect: (roomId) => { void this.moveToRoom(roomId) },
+        onGuestbook: () => { void this.enterGuestbook() },
+      },
     )
     this.loadingScreen = new LoadingScreen(shell.loadingHost)
-    this.emotionPicker = new EmotionPicker(shell.emotionHost, (emotion) => {
-      this.emotionState.select(emotion)
-    })
+    this.floatingActions = new FloatingActions(shell.floatingActionsHost, shell.canvasHost)
     this.artworkViewer = new ArtworkViewer(shell.artworkViewerHost, (isVisible) => {
       this.scene?.setInteractionEnabled(!isVisible)
-      if (isVisible) this.emotionPicker.close()
+      if (isVisible) this.floatingActions.close()
     }, (artwork) => this.takePhoto(artwork.id))
     this.photoButton = shell.photoButton
     this.photoButton.addEventListener('click', () => this.takePhoto())
     this.photoPreview = new PhotoPreview(shell.photoPreviewHost, (isVisible) => {
       this.scene?.setInteractionEnabled(!isVisible)
       this.guestbookScene?.setInteractionEnabled(!isVisible)
-      if (isVisible) this.emotionPicker.close()
     }, () => this.takePhoto(this.lastPhotoArtworkId))
     this.roomIntroReader = new RoomIntroReader(shell.roomIntroReaderHost, (isVisible) => {
       this.scene?.setInteractionEnabled(!isVisible)
-      if (isVisible) this.emotionPicker.close()
+      if (isVisible) this.floatingActions.close()
     })
     this.giftShopCard = new GiftShopCard(shell.giftShopCardHost, (isVisible) => {
       this.guestbookScene?.setInteractionEnabled(!isVisible)
-      if (isVisible) this.emotionPicker.close()
+      if (isVisible) this.floatingActions.close()
     })
     this.customizer = new CustomizerScreen(
       shell.customizerHost,
@@ -114,14 +114,12 @@ export class App {
     this.customizeButton.addEventListener('click', () => this.openCustomizationEditor())
     this.guestbookUi = new GuestbookUi(
       {
-        galleryButton: shell.galleryGuestbookButton,
         modalHost: shell.guestbookModalHost,
         returnButton: shell.guestbookReturnButton,
         toastHost: shell.toastHost,
         writeButton: shell.guestbookWriteButton,
       },
       {
-        onEnter: () => { void this.enterGuestbook() },
         onLeave: () => { void this.returnToGallery() },
         onModalVisibility: (isVisible) => this.guestbookScene?.setInteractionEnabled(!isVisible),
         onSubmit: (message, color) => this.createGuestbookEntry(message, color),
@@ -130,9 +128,7 @@ export class App {
     )
     this.viewingGuide = new ViewingGuide(shell.guideHost, shell.helpButton, (isVisible) => {
       this.scene?.setInteractionEnabled(!isVisible)
-      if (isVisible) {
-        this.emotionPicker.close()
-      }
+      this.guestbookScene?.setInteractionEnabled(!isVisible)
     })
     this.entryScreen = new EntryScreen(shell.entryHost, this.session, (nickname) => {
       void this.enterGallery(nickname)
@@ -166,7 +162,6 @@ export class App {
   private async enterGallery(nickname: string): Promise<void> {
     this.session.setNickname(nickname)
     this.guestbookUi.setNickname(this.session.nickname)
-    this.emotionPicker.hide()
     this.photoButton.hidden = true
     this.entryScreen.hide()
     this.customizerMode = 'entry'
@@ -204,7 +199,6 @@ export class App {
       scene.start()
       this.scene = scene
       this.loadingScreen.hide()
-      this.emotionPicker.show()
       this.updatePhotoButton()
       this.customizeButton.hidden = false
       this.guestbookUi.showGalleryControls()
@@ -216,7 +210,6 @@ export class App {
       console.error('Failed to initialize the exhibition scene.', error)
       this.scene?.dispose()
       this.scene = undefined
-      this.emotionPicker.hide()
       this.photoButton.hidden = true
       this.customizeButton.hidden = true
       this.loadingScreen.showError(() => {
@@ -238,7 +231,6 @@ export class App {
       this.giftShopCard.close()
       this.scene?.dispose()
       this.scene = undefined
-      this.helpButton.hidden = true
       this.customizeButton.hidden = true
       this.guestbookUi.close()
       // 서버에서 최신 글을 불러온다. 글이 하나도 없거나 서버에 닿지 못하면 샘플 방명록을 보여준다.
@@ -410,7 +402,7 @@ export class App {
     this.scene.setMinimapVisible(false)
     this.customizeButton.hidden = true
     this.roomSwitcher.hide()
-    this.emotionPicker.close()
+    this.floatingActions.close()
     this.customizer.open('edit', this.customizationStore.state)
   }
 }
